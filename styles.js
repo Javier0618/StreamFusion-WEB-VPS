@@ -3671,3 +3671,16 @@ position: absolute;
 .details-popup p strong {
     color: #B3B3B3;
 }
+
+footer {
+  text-align: center;
+  padding: 2rem 1rem;
+  margin-top: 2rem;
+  background-color: var(--dark-bg-lighter);
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+footer p {
+  margin: 0.5rem 0;
+}
