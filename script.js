@@ -1293,6 +1293,7 @@ let currentUser = null;
 let isAdmin = false;
 let messageListeners = {};
 let itemToImport = null;
+let hidePopupTimer;
 
 let allAdminUsers = [];
 let isEditMode = false; 
@@ -2716,6 +2717,184 @@ function renderStatsGrid(content) {
   initLazyLoading();
 }
 
+function createContentCard(item, context = 'slider', sliderId = '') {
+    const isGrid = context === 'grid-view';
+    const card = document.createElement('div');
+    card.className = isGrid ? 'grid-card' : 'content-card';
+    card.dataset.id = item.id;
+    card.dataset.type = item.media_type;
+
+    const posterPath = item.poster_path 
+      ? `${IMG_BASE_URL}/w300${item.poster_path}` 
+      : 'https://via.placeholder.com/300x450?text=No+Image';
+
+    const title = item.title || item.name || getText('content.noTitle');
+    const year = (item.release_date || item.first_air_date || '').split('-')[0] || getText('content.notAvailable');
+    const rating = item.vote_average ? item.vote_average.toFixed(1) : getText('content.notAvailable');
+    const type = item.media_type === 'movie' ? getText('content.type.movie') : getText('content.type.series');
+
+    let cardHTML = `
+        <img src="${posterPath}" alt="${title}" class="${isGrid ? 'grid-poster' : 'card-poster'}">
+        <div class="${isGrid ? 'grid-rating' : 'card-rating'}">${rating}</div>
+        <div class="${isGrid ? 'grid-badge' : 'card-badge'}">${type}</div>
+        <div class="card-content">
+    `;
+
+    if (isGrid) {
+        cardHTML += `
+            <div class="grid-info">
+                <h3 class="grid-title">${title}</h3>
+                <div class="grid-meta">
+                    <span>${year}</span>
+                    <span>${type}</span>
+                </div>
+            </div>
+            <div class="grid-actions">
+                <button class="grid-btn play-btn" title="${getText('actions.watchNow')}"><i class="fas fa-play"></i></button>
+                <button class="grid-btn info-btn" title="${getText('actions.info')}"><i class="fas fa-info"></i></button>
+            </div>
+        `;
+    } else {
+        cardHTML += `
+            ${sliderId === 'en-estreno-slider' ? '<div class="card-estreno-diagonal"></div>' : ''}
+            ${sliderId === 'recently-added-slider' ? `<div class="card-nuevo-pegatina">${getText('content.newSticker')}</div>` : ''}
+            <div class="card-overlay">
+                <h3 class="card-title">${title}</h3>
+                <div class="card-info">
+                    <span>${year}</span>
+                    <span>${type}</span>
+                </div>
+                <div class="card-actions">
+                    <button class="card-btn play-btn" title="${getText('actions.watchNow')}"><i class="fas fa-play"></i></button>
+                    <button class="card-btn info-btn" title="${getText('actions.info')}"><i class="fas fa-info"></i></button>
+                    ${sliderId === 'continue-watching-slider' ? `<button class="card-btn remove-btn" title="${getText('actions.removeFromList')}"><i class="fas fa-times"></i></button>` : ''}
+                </div>
+            </div>
+        `;
+    }
+
+    cardHTML += `</div>`;
+
+    card.innerHTML = cardHTML;
+
+    card.addEventListener('mouseenter', () => showMovieDetailsPopup(card, item));
+    card.addEventListener('mouseleave', () => hideMovieDetailsPopup(card));
+
+    card.addEventListener('click', () => {
+        showMovieDetailsModal(item.id, item.media_type);
+    });
+
+    const playBtn = card.querySelector('.play-btn');
+    if (playBtn) {
+        playBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showMovieDetailsModal(item.id, item.media_type);
+        });
+    }
+
+    const infoBtn = card.querySelector('.info-btn');
+    if (infoBtn) {
+        infoBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showMovieDetailsModal(item.id, item.media_type);
+        });
+    }
+
+    if (!isGrid && sliderId === 'continue-watching-slider') {
+        const removeBtn = card.querySelector('.remove-btn');
+        if (removeBtn) {
+            removeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                removeFromContinuarViendo(item.id);
+                card.remove();
+                if (continueWatchingContent.length === 0) {
+                    continueWatchingSection.style.display = 'none';
+                }
+            });
+        }
+    }
+
+    return card;
+}
+
+async function showMovieDetailsPopup(cardElement, item) {
+    clearTimeout(hidePopupTimer);
+    let popup = document.querySelector('.details-popup');
+    if (!popup) {
+        popup = document.createElement('div');
+        popup.className = 'details-popup';
+        document.body.appendChild(popup);
+        popup.addEventListener('mouseenter', () => clearTimeout(hidePopupTimer));
+        popup.addEventListener('mouseleave', () => hideMovieDetailsPopup());
+    }
+
+    popup.innerHTML = '<div class="spinner"></div>';
+
+    const cardRect = cardElement.getBoundingClientRect();
+    const spaceRight = window.innerWidth - cardRect.right;
+    const popupWidth = 300; // Ancho estimado del popup
+
+    if (spaceRight > popupWidth + 20) {
+        popup.style.left = `${cardRect.right + 10}px`;
+        popup.style.right = 'auto';
+    } else {
+        popup.style.right = `${window.innerWidth - cardRect.left + 10}px`;
+        popup.style.left = 'auto';
+    }
+    
+    popup.style.top = `${cardRect.top}px`;
+    popup.style.display = 'block';
+    
+    setTimeout(() => {
+        popup.style.opacity = 1;
+        popup.style.transform = 'translateX(0)';
+    }, 10);
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/${item.media_type}/${item.id}?api_key=${API_KEY}&language=${webSettings.importLanguage}&append_to_response=credits`);
+        if (!response.ok) throw new Error('Failed to fetch details');
+        const details = await response.json();
+
+        const title = details.title || details.name || getText('content.noTitle');
+        const rating = details.vote_average ? `${details.vote_average.toFixed(1)}/10` : 'N/A';
+        const duration = details.runtime ? `${Math.floor(details.runtime / 60)}h ${details.runtime % 60}min` : (details.episode_run_time?.[0] ? `${details.episode_run_time[0]}min` : '');
+        const year = (details.release_date || details.first_air_date || '').split('-')[0] || '';
+        const description = details.overview ? details.overview.substring(0, 150) + '...' : 'No description available.';
+        const genres = details.genres.map(g => g.name).slice(0, 3).join(', ');
+        const cast = details.credits.cast.slice(0, 3).map(c => c.name).join(', ');
+
+        popup.innerHTML = `
+            <h4>${title}</h4>
+            <div class="popup-meta">
+                <span class="rating">${rating}</span>
+                <span>${duration}</span>
+                <span>${year}</span>
+            </div>
+            <p class="description">${description}</p>
+            <p><strong>${getText('genres.genreLabel')}:</strong> ${genres}</p>
+            <p><strong>${getText('details.cast')}:</strong> ${cast}</p>
+        `;
+    } catch (error) {
+        console.error('Error fetching movie details for popup:', error);
+        popup.innerHTML = '<p>Could not load details.</p>';
+    }
+}
+
+function hideMovieDetailsPopup() {
+    hidePopupTimer = setTimeout(() => {
+        let popup = document.querySelector('.details-popup');
+        if (popup) {
+            popup.style.opacity = 0;
+            popup.style.transform = 'translateX(20px)';
+            setTimeout(() => {
+                if (popup) {
+                    popup.style.display = 'none';
+                }
+            }, 300);
+        }
+    }, 300);
+}
+
 async function loadUsers() {
     if (!isAdmin) return;
 
@@ -3938,76 +4117,7 @@ function preloadCriticalImages(content) {
       }
 
       translatedContent.forEach(item => {
-        const card = document.createElement('div');
-        card.className = 'content-card';
-        card.dataset.id = item.id;
-        card.dataset.type = item.media_type;
-
-        const posterPath = item.poster_path 
-          ? `${IMG_BASE_URL}/w300${item.poster_path}` 
-          : 'https://via.placeholder.com/300x450?text=No+Image';
-
-        const title = item.title || item.name || getText('content.noTitle');
-        const year = (item.release_date || item.first_air_date || '').split('-')[0] || getText('content.notAvailable');
-        const rating = item.vote_average ? item.vote_average.toFixed(1) : getText('content.notAvailable');
-        const type = item.media_type === 'movie' ? getText('content.type.movie') : getText('content.type.series');
-
-        card.innerHTML = `
-          <img src="${posterPath}" alt="${title}" class="card-poster">
-          <div class="card-rating">${rating}</div>
-          <div class="card-badge">${type}</div>
-          ${sliderElement.id === 'en-estreno-slider' ? '<div class="card-estreno-diagonal"></div>' : ''}
-          ${sliderElement.id === 'recently-added-slider' ? `<div class="card-nuevo-pegatina">${getText('content.newSticker')}</div>` : ''}
-          <div class="card-overlay">
-            <h3 class="card-title">${title}</h3>
-            <div class="card-info">
-              <span>${year}</span>
-              <span>${type}</span>
-            </div>
-            <div class="card-actions">
-              <button class="card-btn play-btn" title="${getText('actions.watchNow')}">
-                <i class="fas fa-play"></i>
-              </button>
-              <button class="card-btn info-btn" title="${getText('actions.info')}">
-                <i class="fas fa-info"></i>
-              </button>
-              ${sliderElement.id === 'continue-watching-slider' ? `
-                <button class="card-btn remove-btn" title="${getText('actions.removeFromList')}">
-                  <i class="fas fa-times"></i>
-                </button>
-              ` : ''}
-            </div>
-          </div>
-        `;
-        
-        // Add event listeners 
-        card.querySelector('.play-btn').addEventListener('click', (e) => {
-          e.stopPropagation();
-          showMovieDetailsModal(item.id, item.media_type);
-        });
-
-        card.querySelector('.info-btn').addEventListener('click', (e) => {
-          e.stopPropagation();
-          showMovieDetailsModal(item.id, item.media_type);
-        });
-
-        if (sliderElement.id === 'continue-watching-slider') {
-          card.querySelector('.remove-btn').addEventListener('click', (e) => {
-            e.stopPropagation();
-            removeFromContinuarViendo(item.id);
-            card.remove();
-            
-            // Check if continue watching is empty
-            if (continueWatchingContent.length === 0) {
-              continueWatchingSection.style.display = 'none';
-            }
-          });
-        }
-
-        card.addEventListener('click', () => {
-          showMovieDetailsModal(item.id, item.media_type);
-        });
-
+        const card = createContentCard(item, 'slider', sliderElement.id);
         sliderElement.appendChild(card);
       });
     }
@@ -4135,76 +4245,7 @@ async function renderGridView(gridElement, content, clearExisting = true) {
   }
 
   translatedContent.forEach(item => {
-    const card = document.createElement('div');
-    card.className = 'grid-card';
-    card.dataset.id = item.id;
-    card.dataset.type = item.media_type;
-
-    const posterPath = item.poster_path 
-      ? `${IMG_BASE_URL}/w300${item.poster_path}`
-      : 'https://via.placeholder.com/300x450?text=No+Image';
-    
-    const placeholderSvg = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzIDQiPjxyZWN0IHdpZHRoPSIzIiBoZWlnaHQ9IjQiIGZpbGw9IiMzMzMiLz48L2Z2Zz4=';
-
-    const title = item.title || item.name || getText('content.noTitle');
-    const year = (item.release_date || item.first_air_date || '').split('-')[0] || getText('content.notAvailable');
-    const rating = item.vote_average ? item.vote_average.toFixed(1) : getText('content.notAvailable');
-    const type = item.media_type === 'movie' ? getText('content.type.movie') : getText('content.type.series');
-
-    card.innerHTML = `
-      <img 
-        src="${placeholderSvg}" 
-        data-src="${posterPath}" 
-        alt="${title}" 
-        class="grid-poster lazy"
-        loading="lazy"
-      >
-      <div class="grid-rating">${rating}</div>
-      <div class="grid-badge">${type}</div>
-      <div class="grid-info">
-        <h3 class="grid-title">${title}</h3>
-        <div class="grid-meta">
-          <span>${year}</span>
-          <span>${type}</span>
-        </div>
-      </div>
-      <div class="grid-actions">
-        <button class="grid-btn play-btn" title="${getText('actions.watchNow')}">
-          <i class="fas fa-play"></i>
-        </button>
-        <button class="grid-btn info-btn" title="${getText('actions.info')}">
-          <i class="fas fa-info"></i>
-        </button>
-        ${gridElement.id === 'profile-my-list-grid' ? `
-          <button class="grid-btn remove-btn" title="${getText('actions.removeFromList')}">
-            <i class="fas fa-times"></i>
-          </button>
-        ` : ''}
-      </div>
-    `;
-
-    card.querySelector('.play-btn').addEventListener('click', (e) => {
-      e.stopPropagation();
-      showMovieDetailsModal(item.id, item.media_type);
-    });
-
-    card.querySelector('.info-btn').addEventListener('click', (e) => {
-      e.stopPropagation();
-      showMovieDetailsModal(item.id, item.media_type);
-    });
-
-    if (gridElement.id === 'profile-my-list-grid') {
-      card.querySelector('.remove-btn').addEventListener('click', (e) => {
-        e.stopPropagation();
-        removeFromMyList(item.id);
-        card.remove();
-      });
-    }
-
-    card.addEventListener('click', () => {
-      showMovieDetailsModal(item.id, item.media_type);
-    });
-
+    const card = createContentCard(item, 'grid-view');
     gridElement.appendChild(card);
   });
   
