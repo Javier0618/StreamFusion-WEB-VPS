@@ -677,340 +677,18 @@ function applyStaticTranslations() {
     });
 }
 
-;(() => {
-  const _0x4a2b = {
-    logo: atob("U3RyZWFtRnVzaW9u"),
-    checks: [],
-  }
-
-  function _validateLogo() {
-    try {
-      const logoElement = document.querySelector("h1.logo-text")
-      if (!logoElement) return false
-
-      const logoText = logoElement.textContent.trim()
-      if (logoText !== _0x4a2b.logo) {
-        _triggerLockdown("LOGO_MODIFIED")
-        return false
-      }
-      return true
-    } catch (e) {
-      return false
-    }
-  }
-
-  function _triggerLockdown(reason) {
-    try {
-      const lockdownDiv = document.createElement("div")
-      lockdownDiv.id = "license-lockdown"
-      lockdownDiv.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: linear-gradient(135deg, #1a1a1a 0%, #2d0a0a 100%);
-        z-index: 999999;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      `
-
-      lockdownDiv.innerHTML = `
-        <div style="text-align: center; color: #fff; max-width: 600px; padding: 40px;">
-          <div style="font-size: 80px; margin-bottom: 20px;">🔒</div>
-          <h1 style="font-size: 32px; margin-bottom: 20px; color: #ff4444;">Sistema Bloqueado</h1>
-          <p style="font-size: 18px; line-height: 1.6; margin-bottom: 30px; color: #ccc;">
-            Esta licencia no es valida.
-          </p>
-          <div style="background: rgba(255,255,255,0.1); padding: 20px; border-radius: 10px; margin-bottom: 20px;">
-            <p style="font-size: 14px; color: #ff6666; font-family: monospace;">
-              Código de error: ${reason}
-            </p>
-          </div>
-          <p style="font-size: 14px; color: #999;">
-            Obten una licencia válida en <a href="https://t.me/blackdestroy06">Telegram</a>
-          </p>
-        </div>
-      `
-
-      document.body.innerHTML = ""
-      document.body.appendChild(lockdownDiv)
-      document.body.style.overflow = "hidden"
-      document.body.style.userSelect = "none"
-    } catch (e) {
-    }
-  }
-
-  function _setupLogoObserver() {
-    try {
-      const logoElement = document.querySelector("h1.logo-text")
-      if (!logoElement) return
-
-      const observer = new MutationObserver((mutations) => {
-        try {
-          mutations.forEach((mutation) => {
-            if (mutation.type === "childList" || mutation.type === "characterData") {
-              if (!_validateLogo()) {
-                _triggerLockdown("LOGO_MUTATION_DETECTED")
-              }
-            }
-          })
-        } catch (e) {
-        }
-      })
-
-      observer.observe(logoElement, {
-        childList: true,
-        characterData: true,
-        subtree: true,
-      })
-
-      _0x4a2b.checks.push(observer)
-    } catch (e) {
-    }
-  }
-
-  function _setupPeriodicCheck() {
-    try {
-      const checkInterval = setInterval(() => {
-        try {
-          if (!_validateLogo()) {
-            clearInterval(checkInterval)
-            _triggerLockdown("PERIODIC_CHECK_FAILED")
-          }
-        } catch (e) {
-        }
-      }, 3000)
-
-      _0x4a2b.checks.push(checkInterval)
-    } catch (e) {
-    }
-  }
-
-  function _initLicense() {
-    try {
-      const waitForLogo = setInterval(() => {
-        try {
-          if (_validateLogo()) {
-            clearInterval(waitForLogo)
-            _setupLogoObserver()
-            _setupPeriodicCheck()
-
-            window._sfLicenseCore = true
-
-            try {
-              Object.defineProperty(window, "_sfLicenseCore", {
-                configurable: false,
-                writable: false,
-                value: true,
-              })
-            } catch (e) {
-            }
-          }
-        } catch (e) {
-        }
-      }, 100)
-    } catch (e) {
-    }
-  }
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", _initLicense)
-  } else {
-    _initLicense()
-  }
-})()
 
 
 
 
 
-;(() => {
-  function _verifyLicenseCore() {
-    try {
-      if (typeof window._sfLicenseCore === "undefined" || !window._sfLicenseCore) {
-        _emergencyLockdown("CORE_LICENSE_MISSING")
-        return false
-      }
-      return true
-    } catch (e) {
-      _emergencyLockdown("VERIFICATION_ERROR")
-      return false
-    }
-  }
-
-  function _emergencyLockdown(code) {
-    try {
-      const body = document.body
-      body.innerHTML = `
-        <div style="position: fixed; inset: 0; background: #000; display: flex; align-items: center; justify-content: center; z-index: 999999;">
-          <div style="text-align: center; color: #f00; font-family: monospace;">
-            <h1 style="font-size: 48px; margin-bottom: 20px;">⚠️ ACCESO DENEGADO ⚠️</h1>
-            <p style="font-size: 20px;">Violación de integridad detectada</p>
-            <p style="font-size: 14px; margin-top: 20px; color: #666;">Error: ${code}</p>
-          </div>
-        </div>
-      `
-      document.body.style.overflow = "hidden"
-    } catch (e) {
-      // Silencioso
-    }
-  }
-
-  function _continuousVerification() {
-    try {
-      setInterval(() => {
-        try {
-          if (!_verifyLicenseCore()) {
-            _emergencyLockdown("CORE_LICENSE_REMOVED")
-          }
-        } catch (e) {
-          // Silencioso
-        }
-      }, 5000)
-    } catch (e) {
-      // Silencioso
-    }
-  }
-
-  function _init() {
-    try {
-      setTimeout(() => {
-        try {
-          if (!_verifyLicenseCore()) {
-            _emergencyLockdown("CORE_LICENSE_NOT_FOUND")
-            return
-          }
-
-          _continuousVerification()
-
-          window._sfLicenseValidator2 = true
-
-          try {
-            Object.defineProperty(window, "_sfLicenseValidator2", {
-              configurable: false,
-              writable: false,
-              value: true,
-            })
-          } catch (e) {
-            // Silencioso
-          }
-        } catch (e) {
-          // Silencioso
-        }
-      }, 1500)
-    } catch (e) {
-      // Silencioso
-    }
-  }
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", _init)
-  } else {
-    _init()
-  }
-})()
 
 
 
 
-;(() => {
-  function _verifyChain() {
-    try {
-      const coreExists = typeof window._sfLicenseCore !== "undefined" && window._sfLicenseCore
-      const validator2Exists = typeof window._sfLicenseValidator2 !== "undefined" && window._sfLicenseValidator2
 
-      if (!coreExists) {
-        _criticalError("CORE_LICENSE_MISSING")
-        return false
-      }
 
-      if (!validator2Exists) {
-        _criticalError("VALIDATOR2_MISSING")
-        return false
-      }
 
-      return true
-    } catch (e) {
-      _criticalError("CHAIN_VERIFICATION_ERROR")
-      return false
-    }
-  }
-
-  function _criticalError(message) {
-    try {
-      document.body.innerHTML = `
-        <div style="position: fixed; inset: 0; background: linear-gradient(45deg, #1a0000, #000); display: flex; align-items: center; justify-content: center; z-index: 999999; font-family: Arial, sans-serif;">
-          <div style="max-width: 500px; padding: 40px; background: rgba(255,0,0,0.1); border: 2px solid #ff0000; border-radius: 10px; text-align: center;">
-            <div style="font-size: 60px; margin-bottom: 20px;">🚫</div>
-            <h1 style="color: #ff3333; font-size: 28px; margin-bottom: 15px;">Error Crítico de Licencia</h1>
-            <p style="color: #ffaaaa; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">
-              Violación de integridad del sistema detectada.
-            </p>
-            <div style="background: rgba(0,0,0,0.5); padding: 15px; border-radius: 5px; margin-bottom: 20px;">
-              <code style="color: #ff6666; font-size: 12px;">${message}</code>
-            </div>
-            <p style="color: #999; font-size: 12px;">
-              Obten una licencia válida en <a href="https://t.me/blackdestroy06">Telegram</a>
-            </p>
-          </div>
-        </div>
-      `
-      document.body.style.overflow = "hidden"
-    } catch (e) {
-    }
-  }
-
-  function _crossValidate() {
-    try {
-      setInterval(() => {
-        try {
-          if (!_verifyChain()) {
-            _criticalError("LICENSE_CHAIN_BROKEN")
-          }
-        } catch (e) {
-        }
-      }, 4000)
-    } catch (e) {
-    }
-  }
-
-  function _initialize() {
-    try {
-      setTimeout(() => {
-        try {
-          if (!_verifyChain()) {
-            _criticalError("LICENSE_CHAIN_INCOMPLETE")
-            return
-          }
-
-          _crossValidate()
-
-          window._sfLicenseValidator3 = true
-
-          try {
-            Object.defineProperty(window, "_sfLicenseValidator3", {
-              configurable: false,
-              writable: false,
-              value: true,
-            })
-          } catch (e) {
-          }
-        } catch (e) {
-        }
-      }, 2500)
-    } catch (e) {
-    }
-  }
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", _initialize)
-  } else {
-    _initialize()
-  }
-})()
 
 
 // API Configuration
@@ -2031,6 +1709,143 @@ function showMessageModal(title, content, type = 'info') {
 function toggleProfileDropdown() {
   profileDropdown.classList.toggle('active');
 }
+
+;(() => {
+  const _0x4a2b = {
+    logo: atob("U3RyZWFtRnVzaW9u"),
+    checks: [],
+  }
+
+  function _validateLogo() {
+    try {
+      const logoElement = document.querySelector("h1.logo-text")
+      if (!logoElement) return false
+
+      const logoText = logoElement.textContent.trim()
+      if (logoText !== _0x4a2b.logo) {
+        _triggerLockdown("LOGO_MODIFIED")
+        return false
+      }
+      return true
+    } catch (e) {
+      return false
+    }
+  }
+
+  function _triggerLockdown(reason) {
+    try {
+      const lockdownDiv = document.createElement("div")
+      lockdownDiv.id = "license-lockdown"
+      lockdownDiv.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(135deg, #1a1a1a 0%, #2d0a0a 100%);
+        z-index: 999999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      `
+
+      lockdownDiv.innerHTML = `
+        <div style="text-align: center; color: #fff; max-width: 600px; padding: 40px;">
+          <div style="font-size: 80px; margin-bottom: 20px;"></div>
+          <h1 style="font-size: 32px; margin-bottom: 20px; color: #ff4444;"></h1>
+          <p style="font-size: 18px; line-height: 1.6; margin-bottom: 30px; color: #ccc;">
+            
+          </p>
+      `
+
+      document.body.innerHTML = ""
+      document.body.appendChild(lockdownDiv)
+      document.body.style.overflow = "hidden"
+      document.body.style.userSelect = "none"
+    } catch (e) {
+    }
+  }
+
+  function _setupLogoObserver() {
+    try {
+      const logoElement = document.querySelector("h1.logo-text")
+      if (!logoElement) return
+
+      const observer = new MutationObserver((mutations) => {
+        try {
+          mutations.forEach((mutation) => {
+            if (mutation.type === "childList" || mutation.type === "characterData") {
+              if (!_validateLogo()) {
+                _triggerLockdown("LOGO_MUTATION_DETECTED")
+              }
+            }
+          })
+        } catch (e) {
+        }
+      })
+
+      observer.observe(logoElement, {
+        childList: true,
+        characterData: true,
+        subtree: true,
+      })
+
+      _0x4a2b.checks.push(observer)
+    } catch (e) {
+    }
+  }
+
+  function _setupPeriodicCheck() {
+    try {
+      const checkInterval = setInterval(() => {
+        try {
+          if (!_validateLogo()) {
+            clearInterval(checkInterval)
+            _triggerLockdown("PERIODIC_CHECK_FAILED")
+          }
+        } catch (e) {
+        }
+      }, 3000)
+
+      _0x4a2b.checks.push(checkInterval)
+    } catch (e) {
+    }
+  }
+
+  function _initLicense() {
+    try {
+      const waitForLogo = setInterval(() => {
+        try {
+          if (_validateLogo()) {
+            clearInterval(waitForLogo)
+            _setupLogoObserver()
+            _setupPeriodicCheck()
+
+            window._sfLicenseCore = true
+
+            try {
+              Object.defineProperty(window, "_sfLicenseCore", {
+                configurable: false,
+                writable: false,
+                value: true,
+              })
+            } catch (e) {
+            }
+          }
+        } catch (e) {
+        }
+      }, 100)
+    } catch (e) {
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", _initLicense)
+  } else {
+    _initLicense()
+  }
+})()
 
 async function handleLogout() {
   try {
@@ -3184,6 +2999,90 @@ const unsubscribe = onSnapshot(messagesQuery, async (snapshot) => {
       `;
   }
 }
+
+;(() => {
+  function _verifyLicenseCore() {
+    try {
+      if (typeof window._sfLicenseCore === "undefined" || !window._sfLicenseCore) {
+        _emergencyLockdown("CORE_LICENSE_MISSING")
+        return false
+      }
+      return true
+    } catch (e) {
+      _emergencyLockdown("VERIFICATION_ERROR")
+      return false
+    }
+  }
+
+  function _emergencyLockdown(code) {
+    try {
+      const body = document.body
+      body.innerHTML = `
+        <div style="position: fixed; inset: 0; background: #000; display: flex; align-items: center; justify-content: center; z-index: 999999;">
+          <div style="text-align: center; color: #f00; font-family: monospace;">
+            <h1 style="font-size: 48px; margin-bottom: 20px;"></h1>
+            <p style="font-size: 20px;"></p>
+            <p style="font-size: 14px; margin-top: 20px; color: #666;">${code}</p>
+          </div>
+        </div>
+      `
+      document.body.style.overflow = "hidden"
+    } catch (e) {
+      // Silencioso
+    }
+  }
+
+  function _continuousVerification() {
+    try {
+      setInterval(() => {
+        try {
+          if (!_verifyLicenseCore()) {
+            _emergencyLockdown("CORE_LICENSE_REMOVED")
+          }
+        } catch (e) {
+        }
+      }, 5000)
+    } catch (e) {
+    }
+  }
+
+  function _init() {
+    try {
+      setTimeout(() => {
+        try {
+          if (!_verifyLicenseCore()) {
+            _emergencyLockdown("")
+            return
+          }
+
+          _continuousVerification()
+
+          window._sfLicenseValidator2 = true
+
+          try {
+            Object.defineProperty(window, "_sfLicenseValidator2", {
+              configurable: false,
+              writable: false,
+              value: true,
+            })
+          } catch (e) {
+            // Silencioso
+          }
+        } catch (e) {
+          // Silencioso
+        }
+      }, 1500)
+    } catch (e) {
+      // Silencioso
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", _init)
+  } else {
+    _init()
+  }
+})()
 
 async function showEditUserModal(userId) {
   try {
@@ -5601,6 +5500,102 @@ function proceedToImportOptions() {
     }
 }
 
+;(() => {
+  function _verifyChain() {
+    try {
+      const coreExists = typeof window._sfLicenseCore !== "undefined" && window._sfLicenseCore
+      const validator2Exists = typeof window._sfLicenseValidator2 !== "undefined" && window._sfLicenseValidator2
+
+      if (!coreExists) {
+        _criticalError("CORE_LICENSE_MISSING")
+        return false
+      }
+
+      if (!validator2Exists) {
+        _criticalError("VALIDATOR2_MISSING")
+        return false
+      }
+
+      return true
+    } catch (e) {
+      _criticalError("CHAIN_VERIFICATION_ERROR")
+      return false
+    }
+  }
+
+  function _criticalError(message) {
+    try {
+      document.body.innerHTML = `
+        <div style="position: fixed; inset: 0; background: linear-gradient(45deg, #1a0000, #000); display: flex; align-items: center; justify-content: center; z-index: 999999; font-family: Arial, sans-serif;">
+          <div style="max-width: 500px; padding: 40px; background: rgba(255,0,0,0.1); border: 2px solid #ff0000; border-radius: 10px; text-align: center;">
+            <div style="font-size: 60px; margin-bottom: 20px;">🔒</div>
+            <h1 style="color: #ff3333; font-size: 28px; margin-bottom: 15px;">Error de Licencia</h1>
+            <p style="color: #ffaaaa; font-size: 16px; line-height: 1.5; margin-bottom: 20px;">
+              Violación de integridad del sistema detectada.
+            </p>
+            <div style="background: rgba(0,0,0,0.5); padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+              <code style="color: #ff6666; font-size: 12px;">${message}</code>
+            </div>
+            <p style="color: #999; font-size: 12px;">
+              Obten una licencia válida en <a href="https://t.me/blackdestroy06">Telegram</a>
+            </p>
+          </div>
+        </div>
+      `
+      document.body.style.overflow = "hidden"
+    } catch (e) {
+    }
+  }
+
+  function _crossValidate() {
+    try {
+      setInterval(() => {
+        try {
+          if (!_verifyChain()) {
+            _criticalError("LICENSE_CHAIN_BROKEN")
+          }
+        } catch (e) {
+        }
+      }, 4000)
+    } catch (e) {
+    }
+  }
+
+  function _initialize() {
+    try {
+      setTimeout(() => {
+        try {
+          if (!_verifyChain()) {
+            _criticalError("")
+            return
+          }
+
+          _crossValidate()
+
+          window._sfLicenseValidator3 = true
+
+          try {
+            Object.defineProperty(window, "_sfLicenseValidator3", {
+              configurable: false,
+              writable: false,
+              value: true,
+            })
+          } catch (e) {
+          }
+        } catch (e) {
+        }
+      }, 2500)
+    } catch (e) {
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", _initialize)
+  } else {
+    _initialize()
+  }
+})()
+
 
 async function confirmImportWithSections(event) {
     event.preventDefault();
@@ -6348,7 +6343,7 @@ async function loadHomeSections() {
       container.appendChild(sectionEl);
 
       sectionEl.querySelector('.edit-section-btn').addEventListener('click', () => {
-        openSectionModal(section);
+        openSectionModal(section, 'home_sections');
       });
       sectionEl.querySelector('.delete-section-btn').addEventListener('click', async () => {
         if (confirm(`¿Estás seguro de que quieres eliminar la sección "${section.title}"?`)) {
