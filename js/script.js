@@ -3778,7 +3778,8 @@ function initializeCarousel(carouselSection) {
                 trailerModal.style.display = 'flex';
             } else if (linkId) {
                 if (linkType === 'movie' || linkType === 'series') {
-                    showMovieDetailsModal(linkId, linkType);
+                    const mediaType = linkType === 'series' ? 'tv' : linkType;
+                    showMovieDetailsModal(linkId, mediaType);
                 } else if (linkType === 'view') {
                     navigateToView(linkId);
                 } else if (linkType === 'link') {
