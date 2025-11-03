@@ -22,7 +22,16 @@
 <link rel="preconnect" href="https://cdnjs.cloudflare.com">
 <link rel="preconnect" href="https://www.gstatic.com">
 <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" as="style">
-<link rel="stylesheet" href="styles.css">
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-VZEP4GTRKY"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-VZEP4GTRKY');
+</script>
+<link rel="stylesheet" href="style/styles.css">
 </head>
 <body>
 <!-- Loading spinner -->
@@ -1317,8 +1326,9 @@
 </div>
 <!-- SortableJS for drag-and-drop --> 
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
-<script type="module" src="config.js"></script>
-<script type="module" src="script.js"></script>
+<script type="module" src="js/config.js"></script>
+<script type="module" src="js/script.js"></script>
+<script type="module" src="js/script.block.js"></script>
 
     <!-- Trailer Modal -->
     <div id="trailer-modal" class="modal-overlay" style="display: none;">
