@@ -1,7 +1,7 @@
 // Import Firebase modules 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-analytics.js";
-import { firebaseConfig, API_KEY } from './config.js';
+import { firebaseConfig, API_KEY, ADMIN_EMAIL } from './config.js';
 import { GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-auth.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-auth.js";
 import { getFirestore, collection, addDoc, getDocs, getDoc, doc, setDoc, updateDoc, query, where, orderBy, limit, serverTimestamp, onSnapshot, writeBatch, deleteDoc } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-firestore.js"; // Añadido deleteDoc
@@ -1002,9 +1002,6 @@ let currentManageContentData = [];
 
 // --- END OF PAGINATION REFACTOR ---
 
-
-// Admin credentials
-const ADMIN_EMAIL = 'javiervelasquez0618@gmail.com';
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', () => {
