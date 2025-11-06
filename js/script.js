@@ -1015,12 +1015,42 @@ async function initApp() {
     await loadWebSettings();
     applyStaticTranslations();
     initEventListeners();
-    initAuth(); 
+    initAuth();
   } catch (error) {
     console.error("Error initializing app:", error);
   } finally {
     hideSpinner();
   }
+}
+
+function handleInitialLoadURL() {
+    const hash = window.location.hash;
+    if (hash) {
+        const slug = hash.substring(1); // Remove the '#'
+        
+        if (allContent.length > 0) {
+            const contentItem = allContent.find(item => createSlug(item.title || item.name) === slug);
+            if (contentItem) {
+                showMovieDetailsModal(contentItem.id, contentItem.media_type, false);
+            } else {
+                history.replaceState(null, '', window.location.pathname);
+            }
+        }
+    }
+}
+
+function createSlug(title) {
+  if (!title) return '';
+  return title
+    .toString()
+    .toLowerCase()
+    .normalize('NFD') // Normaliza para separar acentos de las letras
+    .replace(/[\u0300-\u036f]/g, '') // Elimina los acentos
+    .replace(/\s+/g, '-') // Reemplaza espacios con -
+    .replace(/[^\w\-]+/g, '') // Elimina todos los caracteres no alfanuméricos excepto -
+    .replace(/\-\-+/g, '-') // Reemplaza múltiples - con uno solo
+    .replace(/^-+/, '') // Elimina - del inicio
+    .replace(/-+$/, ''); // Elimina - del final
 }
 
 // Initialize authentication
@@ -1060,6 +1090,7 @@ function initAuth() {
     try {
       await loadAllContent();
       checkWelcomePopup();
+      handleInitialLoadURL(); // Call this AFTER content is loaded
     } catch (error) {
       console.error("Failed to load initial content:", error);
     }
@@ -1681,6 +1712,18 @@ window.addEventListener('resize', debounce(() => {
 
   if (trailerModal) trailerModal.addEventListener('click', (e) => { if (e.target === trailerModal) closeTrailer(); });
   if (closeTrailerModal) closeTrailerModal.addEventListener('click', closeTrailer);
+
+    window.addEventListener('popstate', (event) => {
+        const modalContainer = document.getElementById('movie-details-modal-container');
+        if (event.state && event.state.slug) {
+            showMovieDetailsModal(event.state.id, event.state.type, false);
+        } else {
+            const modal = modalContainer.querySelector('.movie-details-modal');
+            if (modal) {
+                modalContainer.innerHTML = '';
+            }
+        }
+    });
 }
 
 function showMessageModal(title, content, type = 'info') {
@@ -4917,7 +4960,7 @@ function attachAccordionEventListeners(seasons) {
     });
 }
 
-async function showMovieDetailsModal(id, type) {
+async function showMovieDetailsModal(id, type, pushState = true) {
     const modalContainer = document.getElementById('movie-details-modal-container');
     const isModalAlreadyOpen = modalContainer.querySelector('.movie-details-modal');
 
@@ -4932,9 +4975,7 @@ async function showMovieDetailsModal(id, type) {
             </div>`;
         
         const closeModal = () => {
-            modalContainer.innerHTML = '';
-            const iframe = document.getElementById('video-player-iframe');
-            if (iframe) iframe.src = 'about:blank';
+            history.back();
         };
 
         modalContainer.querySelector('#close-details-modal').addEventListener('click', closeModal);
@@ -4958,6 +4999,11 @@ async function showMovieDetailsModal(id, type) {
             await renderModalContent(data, type);
         } else {
             const data = await response.json();
+            if (pushState) {
+                const slug = createSlug(data.title || data.name);
+                // Use hash-based navigation
+                history.pushState({ id: data.id, type: type, slug: slug }, '', `#${slug}`);
+            }
             await updatePosterClickCount(data.id, type, data.title || data.name, data.poster_path, data.vote_average);
             await renderModalContent(data, type);
         }
