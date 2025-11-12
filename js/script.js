@@ -742,9 +742,6 @@ const header = document.getElementById('header');
 const searchBtn = document.getElementById('search-btn');
 const searchInput = document.getElementById('search-input');
 const backToTopBtn = document.getElementById('back-to-top');
-const welcomePopup = document.getElementById('welcome-popup');
-const closePopup = document.getElementById('close-popup');
-const dontShowAgain = document.getElementById('dont-show-again');
 const serviceItems = document.querySelectorAll('.service-item');
 const hero = document.getElementById('hero');
 const enEstrenoSlider = document.getElementById('en-estreno-slider');
@@ -1089,7 +1086,6 @@ function initAuth() {
     // Load content after user status is known
     try {
       await loadAllContent();
-      checkWelcomePopup();
       handleInitialLoadURL(); // Call this AFTER content is loaded
     } catch (error) {
       console.error("Failed to load initial content:", error);
@@ -1383,9 +1379,6 @@ window.addEventListener('resize', debounce(() => {
   // Back to top button
   window.addEventListener('scroll', toggleBackToTop);
   backToTopBtn.addEventListener('click', scrollToTop);
-
-  // Welcome popup
-  closePopup.addEventListener('click', handleClosePopup);
 
   // Service selection
   serviceItems.forEach(item => {
@@ -4439,23 +4432,6 @@ async function handleCategoryClick(e) {
       top: 0,
       behavior: 'smooth'
     });
-  }
-
-  function checkWelcomePopup() {
-    const dontShowAgain = localStorage.getItem('dontShowPopupAgain');
-    
-    if (dontShowAgain !== 'true') {
-      welcomePopup.style.display = 'flex';
-    }
-  }
-
-  // Handle close popup
-  function handleClosePopup() {
-    welcomePopup.style.display = 'none';
-    
-    if (dontShowAgain.checked) {
-      localStorage.setItem('dontShowPopupAgain', 'true');
-    }
   }
 
   // Load continue watching content
