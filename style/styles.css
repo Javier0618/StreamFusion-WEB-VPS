@@ -69,7 +69,6 @@ body {
   -ms-user-select: none;
   user-select: none;
   padding-bottom: 70px;
-  padding-top: var(--header-height);
 }
 
 img {
