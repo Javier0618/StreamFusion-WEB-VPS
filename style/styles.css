@@ -2133,6 +2133,18 @@ img.lazy.loaded {
     body {
         padding-bottom: 0; /* Eliminar el padding inferior */
     }
+
+    header {
+        background-color: transparent;
+        transition: background-color 0.3s ease;
+        padding-left: 6%;
+        padding-right: 6%;
+    }
+
+    header.scrolled {
+        background-color: var(--dark-bg-lighter);
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    }
 }
 
 /* Floating Donation Button */
