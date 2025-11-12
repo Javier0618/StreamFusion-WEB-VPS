@@ -1338,20 +1338,23 @@ function hideAuthModal() {
 }
 
 function initEventListeners() {
-  // Header scroll effect
-window.addEventListener('scroll', throttle(() => {
-  // Header scroll effect
-  if (window.scrollY > 50) {
-    header.classList.add('scrolled');
-  } else {
-    header.classList.remove('scrolled');
-  }
+  // Other scroll effects (throttled for performance)
+  window.addEventListener('scroll', throttle(() => {
+    // Back to top button
+    toggleBackToTop();
 
-  // Back to top button
-  toggleBackToTop();
+    initLazyLoading();
+  }, 100));
 
-  initLazyLoading();
-}, 100));
+  // Intersection Observer for header
+  const headerSentinel = document.getElementById('header-sentinel');
+  const headerObserver = new IntersectionObserver(
+    ([entry]) => {
+      header.classList.toggle('scrolled', !entry.isIntersecting);
+    },
+    { threshold: 0.9 }
+  );
+  headerObserver.observe(headerSentinel);
 
 window.addEventListener('resize', debounce(() => {
   // Ajusta los sliders si es necesario
