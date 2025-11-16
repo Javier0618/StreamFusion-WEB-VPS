@@ -677,6 +677,28 @@ function applyStaticTranslations() {
     });
 }
 
+async function setLanguage(lang) {
+    if (lang === webSettings.displayLanguage) return; // Do nothing if language is already set
+
+    webSettings.displayLanguage = lang;
+    localStorage.setItem('displayLanguage', lang);
+
+    // Re-initialize the app's content with the new language
+    showSpinner();
+    try {
+        // We don't need to loadWebSettings again, just re-render content
+        applyStaticTranslations();
+        updateUIForLoggedInUser(); // To translate dropdowns etc.
+
+        // Refetch and re-render all dynamic content
+        await loadAllContent();
+    } catch (error) {
+        console.error("Error applying new language:", error);
+    } finally {
+        hideSpinner();
+    }
+}
+
 
 
 
@@ -1009,7 +1031,11 @@ document.addEventListener('DOMContentLoaded', () => {
 async function initApp() {
   showSpinner();
   try {
-    await loadWebSettings();
+    const savedLanguage = localStorage.getItem('displayLanguage');
+    await loadWebSettings(); // Load settings from Firestore first
+    if (savedLanguage && (savedLanguage === 'es-MX' || savedLanguage === 'en-US')) {
+      webSettings.displayLanguage = savedLanguage; // Override with local preference
+    }
     applyStaticTranslations();
     initEventListeners();
     initAuth();
@@ -1490,6 +1516,19 @@ window.addEventListener('resize', debounce(() => {
   if (backFromProfile) backFromProfile.addEventListener('click', () => { userProfilePage.classList.remove('active'); navigateToView('home'); });
   if (backFromAdmin) backFromAdmin.addEventListener('click', () => { adminPanel.classList.remove('active'); navigateToView('home'); });
   if (backFromManagement) backFromManagement.addEventListener('click', () => navigateToView('home'));
+
+  // Language switcher
+  document.querySelectorAll('.language-link').forEach(link => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      const lang = e.target.dataset.lang;
+      setLanguage(lang);
+      // Close the dropdown after selection
+      if (profileDropdown.classList.contains('active')) {
+        profileDropdown.classList.remove('active');
+      }
+    });
+  });
 
   // Profile tabs
   profileTabs.forEach(tab => {
