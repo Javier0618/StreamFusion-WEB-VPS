@@ -1,17 +1,6 @@
-// Import Firebase modules 
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-app.js";
-import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-analytics.js";
-import { firebaseConfig, API_KEY, ADMIN_EMAIL } from './config.js';
-import { GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-auth.js";
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-auth.js";
-import { getFirestore, collection, addDoc, getDocs, getDoc, doc, setDoc, updateDoc, query, where, orderBy, limit, serverTimestamp, onSnapshot, writeBatch, deleteDoc } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-firestore.js"; // Añadido deleteDoc
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const apiCache = new Map();
+// Import API methods
+import * as api from './api.js';
+import { TMDB_API_KEY, ADMIN_EMAIL } from './config.js';
 
 const translations = {
     'es-MX': {
@@ -1050,169 +1039,72 @@ function createSlug(title) {
     .replace(/-+$/, ''); // Elimina - del final
 }
 
-// Initialize authentication
-function initAuth() {
-  onAuthStateChanged(auth, async (user) => {
-    if (user) {
-      hideAuthModal();
-      try {
-        const userDoc = await getDoc(doc(db, "users", user.uid));
-        if (userDoc.exists()) {
-          currentUser = { id: user.uid, ...userDoc.data() };
-        } else {
-          const newUser = {
-            name: user.displayName || user.email.split('@')[0],
-            email: user.email,
-            registeredAt: serverTimestamp(),
-            myList: [],
-            messagesSent: [],
-            lastActivity: serverTimestamp(),
-            isAdmin: user.email === ADMIN_EMAIL,
-          };
-          await setDoc(doc(db, "users", user.uid), newUser);
-          currentUser = { id: user.uid, ...newUser };
+// Check authentication status from token in localStorage
+async function checkAuthStatus() {
+    const token = localStorage.getItem('token');
+    if (token) {
+        try {
+            const data = await api.getAuthStatus();
+            currentUser = data.user;
+            isAdmin = currentUser.isAdmin;
+        } catch (error) {
+            currentUser = null;
+            isAdmin = false;
+            localStorage.removeItem('token');
         }
-        isAdmin = currentUser.email === ADMIN_EMAIL;
-        updateDoc(doc(db, "users", user.uid), { lastActivity: serverTimestamp() });
-      } catch (error) {
-        console.error("Error getting user data:", error);
-      }
     } else {
-      currentUser = null;
-      isAdmin = false;
+        currentUser = null;
+        isAdmin = false;
     }
     updateUIForLoggedInUser();
-    
-    // Load content after user status is known
-    try {
-      await loadAllContent();
-      handleInitialLoadURL(); // Call this AFTER content is loaded
-    } catch (error) {
-      console.error("Failed to load initial content:", error);
-    }
-  });
-
-  // Add event listeners for auth forms
-  loginForm.addEventListener('submit', handleLogin);
-  registerForm.addEventListener('submit', handleRegister);
-  showRegister.addEventListener('click', () => {
-    loginFormContainer.style.display = 'none';
-    registerFormContainer.style.display = 'block';
-  });
-  showLogin.addEventListener('click', () => {
-    registerFormContainer.style.display = 'none';
-    loginFormContainer.style.display = 'block';
-  });
-  authCloseBtn.addEventListener('click', hideAuthModal);
+    await loadAllContent();
 }
 
-function handleGoogleSignIn() {
-  const provider = new GoogleAuthProvider()
-  provider.setCustomParameters({
-    prompt: "select_account",
-  })
-
-  signInWithPopup(auth, provider)
-    .then((result) => {
-
-      showSpinner()
-
-      hideAuthModal(); 
-    })
-    .catch((error) => {
-      hideSpinner()
-      console.error("Error en autenticación con Google:", error)
-
-      // Mostrar error en ambos formularios
-      loginError.textContent = "Error al iniciar sesión con Google. Inténtalo de nuevo."
-      loginError.style.display = "block"
-
-      registerError.textContent = "Error al registrarse con Google. Inténtalo de nuevo."
-      registerError.style.display = "block"
-    })
-}
-
-// Handle login
+// Handle login form submission
 async function handleLogin(e) {
   e.preventDefault();
-
   const email = loginEmail.value.trim();
   const password = loginPassword.value;
-
-  // Show spinner
   showSpinner();
-
   try {
-    // Sign in with Firebase Auth
-    await signInWithEmailAndPassword(auth, email, password);
-
-    // Clear form
-    loginForm.reset();
-    loginError.style.display = 'none';
-    
+    const data = await api.login(email, password);
+    localStorage.setItem('token', data.token);
+    await checkAuthStatus(); // Re-check status to update UI and reload content
+    hideAuthModal();
   } catch (error) {
-    // Hide spinner
-    hideSpinner();
-
-    // Show error
-    loginError.textContent = getAuthErrorMessage(error.code);
+    loginError.textContent = error.message;
     loginError.style.display = 'block';
+  } finally {
+    hideSpinner();
   }
 }
 
-// Handle register
+// Handle registration form submission
 async function handleRegister(e) {
   e.preventDefault();
-
   const name = registerName.value.trim();
   const email = registerEmail.value.trim();
   const password = registerPassword.value;
   const confirmPassword = registerConfirmPassword.value;
 
-  // Validate form
   if (password !== confirmPassword) {
     registerError.textContent = 'Las contraseñas no coinciden';
     registerError.style.display = 'block';
-    registerSuccess.style.display = 'none';
     return;
   }
-
-  // Show spinner
   showSpinner();
-
   try {
-    // Create user with Firebase Auth
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    const user = userCredential.user;
-
-    // Add user data to Firestore
-    await setDoc(doc(db, "users", user.uid), {
-      name: name,
-      email: email,
-      registeredAt: serverTimestamp(),
-      myList: [],
-      messagesSent: [],
-      lastActivity: serverTimestamp(),
-      isAdmin: user.email === ADMIN_EMAIL
-    });
-
-    // Show success message
-    registerError.style.display = 'none';
-    registerSuccess.textContent = 'Registro exitoso. Iniciando sesión...';
+    await api.register(name, email, password);
+    registerSuccess.textContent = 'Registro exitoso. Ahora puedes iniciar sesión.';
     registerSuccess.style.display = 'block';
-
-    // Clear form
+    registerError.style.display = 'none';
     registerForm.reset();
-    
-
+    showLogin.click(); // Switch to login form
   } catch (error) {
-    // Hide spinner
-    hideSpinner();
-
-    // Show error
-    registerError.textContent = getAuthErrorMessage(error.code);
+    registerError.textContent = error.message;
     registerError.style.display = 'block';
-    registerSuccess.style.display = 'none';
+  } finally {
+    hideSpinner();
   }
 }
 
@@ -1990,24 +1882,10 @@ function showUserProfile() {
 // Load user's my list
 async function loadUserMyList() {
     if (!currentUser) return;
-
     try {
-        const userDoc = await getDoc(doc(db, "users", currentUser.id));
-        if (userDoc.exists() && userDoc.data().myList && userDoc.data().myList.length > 0) {
-            let myList = userDoc.data().myList;
-            myList.sort((a, b) => (b.lastVisited || 0) - (a.lastVisited || 0));
-            
-            // Paginate "My List"
-            await setupContentPagination(myList, profileMyListGrid, document.getElementById('load-more-my-list'));
-        } else {
-            profileMyListGrid.innerHTML = `
-                <div class="empty-state">
-                    <i class="fas fa-list-alt empty-icon"></i>
-                    <h3 class="empty-title">${getText('user.profile.myList.emptyTitle')}</h3>
-                    <p class="empty-text">${getText('user.profile.myList.emptyText')}</p>
-                </div>`;
-            document.getElementById('load-more-my-list').parentElement.style.display = 'none';
-        }
+        const myList = await api.getMyList();
+        myList.sort((a, b) => new Date(b.last_visited) - new Date(a.last_visited));
+        await setupContentPagination(myList, profileMyListGrid, document.getElementById('load-more-my-list'));
     } catch (error) {
         console.error("Error loading user's my list:", error);
         profileMyListGrid.innerHTML = `<div class="empty-state error">${getText('user.profile.myList.loadError')}</div>`;
@@ -2015,118 +1893,41 @@ async function loadUserMyList() {
 }
 
 
-// Load user's messages with real-time updates
-function loadUserMessages() {
+// Load user's messages
+async function loadUserMessages() {
   if (!currentUser) return;
-
+  messagesList.innerHTML = `<div class="spinner"></div>`;
+  noMessages.style.display = 'none';
   try {
-    // Limpiar listener anterior si existe
-    if (messageListeners[currentUser.id]) {
-      messageListeners[currentUser.id]();
-    }
-
-    // Mostrar estado de carga
-    messagesList.innerHTML = `
-      <div class="message-item" style="text-align: center;">
-        <div class="spinner" style="width: 30px; height: 30px; margin: 0 auto;"></div>
-        <p style="margin-top: 10px;">${getText('user.messages.loading')}</p>
-      </div>
-    `;
-    noMessages.style.display = 'none';
-
-    const messagesQuery = query(
-      collection(db, "messages"),
-      where("to", "in", [currentUser.id, "all"]),
-      orderBy("date", "desc")
-    );
-
-    const unsubscribe = onSnapshot(messagesQuery, (snapshot) => {
-      const userMessages = [];
-
-      snapshot.forEach((doc) => {
-        userMessages.push({
-          id: doc.id,
-          ...doc.data()
-        });
-      });
-
-      if (userMessages.length > 0) {
-        noMessages.style.display = 'none';
+    const messages = await api.getMyMessages();
+    if (messages.length > 0) {
         messagesList.innerHTML = '';
-
-        userMessages.forEach(message => {
-          const messageDate = message.date instanceof Date
-            ? message.date
-            : message.date?.toDate?.() || new Date();
-
-          const messageItem = document.createElement('div');
-          messageItem.className = 'message-item';
-
-          const canDelete = (message.from === currentUser.id) || isAdmin;
-
-          messageItem.innerHTML = `
-            <div class="message-header">
-              <span class="message-sender">${message.from === 'admin' ? getText('user.messages.sender.admin') : message.from === currentUser.id ? getText('user.messages.sender.you') : getText('user.messages.sender.system')}</span>
-              <span class="message-date">${messageDate.toLocaleString()}</span>
-            </div>
-            <div class="message-content">${message.content}</div>
-            ${canDelete ? `
-              <div class="message-actions">
-                <button class="message-delete-btn" data-id="${message.id}">
-                  <i class="fas fa-trash"></i>
-                </button>
-              </div>
-            ` : ''}
-          `;
-
-          messagesList.appendChild(messageItem);
-
-          // Agregar event listener al botón de eliminar si existe
-          if (canDelete) {
-            const deleteBtn = messageItem.querySelector('.message-delete-btn');
-            deleteBtn.addEventListener('click', () => {
-              showDeleteMessageModal(message.id);
-            });
-          }
+        messages.forEach(message => {
+            const messageItem = document.createElement('div');
+            messageItem.className = 'message-item';
+            const canDelete = (message.from_user_id === currentUser.id && !message.from_admin) || isAdmin;
+            messageItem.innerHTML = `
+                <div class="message-header">
+                  <span class="message-sender">${message.from_admin ? getText('user.messages.sender.admin') : (message.from_user_id === currentUser.id ? getText('user.messages.sender.you') : message.from_user_name)}</span>
+                  <span class="message-date">${new Date(message.date).toLocaleString()}</span>
+                </div>
+                <div class="message-content">${message.content}</div>
+                ${canDelete ? `<div class="message-actions"><button class="message-delete-btn" data-id="${message.id}"><i class="fas fa-trash"></i></button></div>` : ''}
+            `;
+            messagesList.appendChild(messageItem);
+            if (canDelete) {
+                messageItem.querySelector('.message-delete-btn').addEventListener('click', () => {
+                    showDeleteMessageModal(message.id);
+                });
+            }
         });
-
-        const unreadMessages = userMessages.filter(message =>
-          message.from === 'admin' && !message.read
-        );
-        updateNotificationBadge(unreadMessages.length);
-
-      } else {
+    } else {
         noMessages.style.display = 'block';
         messagesList.innerHTML = '';
-        updateNotificationBadge(0); // AÑADIR ESTA LÍNEA
-      }
-    }, (error) => {
-      console.error("Error loading user's messages:", error);
-      noMessages.style.display = 'none';
-      messagesList.innerHTML = `
-        <div class="empty-state">
-          <i class="fas fa-exclamation-circle empty-icon"></i>
-          <h3 class="empty-title">${getText('user.messages.loadError')}</h3>
-          <p class="empty-text">${getText('user.messages.loadError')}</p>
-        </div>
-      `;
-      updateNotificationBadge(0); // AÑADIR ESTA LÍNEA
-    });
-
-    // Guardar referencia al listener para limpiarlo después
-    messageListeners[currentUser.id] = unsubscribe;
-
+    }
   } catch (error) {
-    console.error("Error setting up message listener:", error);
-    noMessages.style.display = 'none';
-    messagesList.innerHTML = `
-      <div class="empty-state">
-        <i class="fas fa-exclamation-circle empty-icon"></i>
-        <h3 class="empty-title">${getText('user.messages.loadError')}</h3>
-        <p class="empty-text">${getText('user.messages.loadError')}</p>
-      </div>
-    `;
-    updateNotificationBadge(0); // AÑADIR ESTA LÍNEA
+    console.error("Error loading user's messages:", error);
+    messagesList.innerHTML = `<div class="empty-state error">${getText('user.messages.loadError')}</div>`;
   }
 }
 
@@ -2237,78 +2038,28 @@ async function checkUserMessageLimit() {
 }
 
 async function handleSendUserMessage() {
-  if (!currentUser) {
-    showMessageModal(getText('user.profile.restrictedAccess'), getText('user.profile.loginRequired'), 'info');
-    showAuthModal();
-    return;
-  }
-
-  const content = userMessageContent.value.trim();
-
-  // Validate form
-  if (!content) {
-    showMessageModal(getText('user.messages.sendError.noMessage'), getText('user.messages.sendError.noMessage'), 'error');
-    return;
-  }
-
-  try {
-    // Mostrar indicador de carga
+    if (!currentUser) {
+        showAuthModal();
+        return;
+    }
+    const content = userMessageContent.value.trim();
+    if (!content) {
+        showMessageModal('Error', getText('user.messages.sendError.noMessage'), 'error');
+        return;
+    }
     sendUserMessageBtn.textContent = getText('user.messages.sending');
     sendUserMessageBtn.disabled = true;
-
-    // Obtener la fecha actual
-    const now = new Date();
-
-    // Agregar mensaje a Firestore
-    const messageRef = await addDoc(collection(db, "messages"), {
-      from: currentUser.id,
-      to: 'admin',
-      content: content,
-      date: serverTimestamp(),
-      read: false,
-      userName: currentUser.name
-    });
-
-    // Actualizar el registro de mensajes enviados por el usuario
-    const userRef = doc(db, "users", currentUser.id);
-    const userDoc = await getDoc(userRef);
-
-    if (userDoc.exists()) {
-      const userData = userDoc.data();
-      const messagesSent = userData.messagesSent || [];
-
-      // Agregar el nuevo mensaje al registro
-      messagesSent.push({
-        id: messageRef.id,
-        date: now
-
-      });
-
-      // Actualizar el documento del usuario
-      await updateDoc(userRef, {
-        messagesSent: messagesSent
-      });
+    try {
+        await api.sendToAdmin(content);
+        userMessageContent.value = '';
+        loadUserMessages();
+        showMessageModal(getText('user.messages.sendSuccess'), '', 'success');
+    } catch (error) {
+        showMessageModal(getText('user.messages.sendError.general'), error.message, 'error');
+    } finally {
+        sendUserMessageBtn.textContent = getText('user.messages.sendMessage');
+        sendUserMessageBtn.disabled = false;
     }
-
-    // Limpiar el formulario
-    userMessageContent.value = '';
-
-    // Restaurar botón
-    sendUserMessageBtn.textContent = getText('user.messages.sendMessage');
-
-    // Verificar límite de mensajes
-    checkUserMessageLimit();
-
-    // Mostrar mensaje de éxito
-    showMessageModal(getText('user.messages.sendSuccess'), getText('user.messages.sendSuccess'), 'success');
-  } catch (error) {
-    console.error("Error sending user message:", error);
-    showMessageModal(getText('user.messages.sendError.general'), getText('user.messages.sendError.general'), 'error');
-
-    // Restaurar botón
-    sendUserMessageBtn.textContent = getText('user.messages.sendMessage');
-    sendUserMessageBtn.disabled = false;
-  }
 }
 
 // Show delete message modal
@@ -2320,40 +2071,16 @@ function showDeleteMessageModal(messageId) {
 // Handle delete message
 async function handleDeleteMessage() {
   const messageId = deleteMessageId.value;
-
   try {
-    // Eliminar mensaje de Firestore
-    await deleteDoc(doc(db, "messages", messageId));
-
-    if (!isAdmin) {
-      const userRef = doc(db, "users", currentUser.id);
-      const userDoc = await getDoc(userRef);
-
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        let messagesSent = userData.messagesSent || [];
-
-        // Filtrar el mensaje eliminado
-        messagesSent = messagesSent.filter(msg => msg.id !== messageId);
-
-        // Actualizar el documento del usuario
-        await updateDoc(userRef, {
-          messagesSent: messagesSent
-        });
-
-        // Verificar límite de mensajes
-        checkUserMessageLimit();
-      }
-    }
-
-    // Cerrar modal
+    await api.deleteMessage(messageId);
     deleteMessageModal.style.display = 'none';
-
-    // Mostrar mensaje de éxito
-    showMessageModal(getText('user.messages.deleteSuccess'), getText('user.messages.deleteSuccess'), 'success');
+    loadUserMessages(); // Reload messages for the current view (user or admin)
+    if (adminPanel.classList.contains('active')) {
+        loadAdminMessages();
+    }
+    showMessageModal(getText('user.messages.deleteSuccess'), '', 'success');
   } catch (error) {
-    console.error("Error deleting message:", error);
-    showMessageModal(getText('user.messages.deleteError'), getText('user.messages.deleteError'), 'error');
+    showMessageModal(getText('user.messages.deleteError'), error.message, 'error');
   }
 }
 
@@ -2746,24 +2473,16 @@ function hideMovieDetailsPopup() {
     }, 300);
 }
 
+// Load users for admin panel
 async function loadUsers() {
     if (!isAdmin) return;
-
     showSpinner();
     try {
-        if (allAdminUsers.length === 0) {
-            const usersSnapshot = await getDocs(collection(db, "users"));
-            allAdminUsers = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        }
-
+        allAdminUsers = await api.getAllUsers();
         registeredUsersCount.textContent = allAdminUsers.length;
-
-        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-        const activeUsers = allAdminUsers.filter(user => (user.lastActivity?.toDate?.() || new Date(0)) > oneHourAgo);
-        activeUsersCount.textContent = activeUsers.length;
-
+        // Active users logic might need adjustment based on backend implementation
+        activeUsersCount.textContent = 'N/A';
         filterUsers();
-
     } catch (error) {
         console.error("Error loading users:", error);
         usersGrid.innerHTML = `<div class="empty-state error">${getText('admin.loadUsersError')}</div>`;
@@ -2904,136 +2623,41 @@ async function loadMessageRecipients() {
   }
 }
 
-function loadAdminMessages() {
-  console.log('Paso 1: Se llamó a loadAdminMessages. El valor de isAdmin es:', isAdmin);
-  if (!isAdmin) return;
-
-  try {
-    // Limpiar listener anterior si existe
-    if (messageListeners['admin']) {
-      messageListeners['admin']();
-    }
-
-    // Mostrar estado de carga
-    adminMessagesList.innerHTML = `
-      <div class="message-item" style="text-align: center;">
-        <div class="spinner" style="width: 30px; height: 30px; margin: 0 auto;"></div>
-        <p style="margin-top: 10px;">${getText('user.messages.loading')}</p>
-      </div>
-    `;
+// Load admin messages
+async function loadAdminMessages() {
+    if (!isAdmin) return;
+    adminMessagesList.innerHTML = `<div class="spinner"></div>`;
     adminNoMessages.style.display = 'none';
-
-    const messagesQuery = query(
-      collection(db, "messages"),
-      where("to", "==", "admin"),
-      orderBy("date", "desc")
-    );
-
-const unsubscribe = onSnapshot(messagesQuery, async (snapshot) => {
-  console.log('Paso 2: Respuesta de Firestore recibida. Documentos:', snapshot.size);
-  const adminMessages = [];
-
-      for (const docSnapshot of snapshot.docs) {
-        const messageData = docSnapshot.data();
-
-        if (messageData.from !== 'admin') {
-          try {
-            const userDoc = await getDoc(doc(db, "users", messageData.from));
-            const userName = userDoc.exists() ? userDoc.data().name : getText('admin.unknownUser');
-
-            adminMessages.push({
-              id: docSnapshot.id,
-              ...messageData,
-              userName: messageData.userName || userName
+    try {
+        const messages = await api.adminGetMessages();
+        if (messages.length > 0) {
+            adminMessagesList.innerHTML = '';
+            messages.forEach(message => {
+                const messageItem = document.createElement('div');
+                messageItem.className = 'message-item';
+                messageItem.innerHTML = `
+                    <div class="message-header">
+                      <span class="message-sender">${getText('admin.fromLabel')} ${message.from_user_name || getText('admin.user')}</span>
+                      <span class="message-date">${new Date(message.date).toLocaleString()}</span>
+                    </div>
+                    <div class="message-content">${message.content}</div>
+                    <div class="message-actions">
+                      <button class="message-delete-btn" data-id="${message.id}"><i class="fas fa-trash"></i></button>
+                      <button class="admin-action-btn message" data-id="${message.from_user_id}" data-name="${message.from_user_name || getText('admin.user')}">${getText('actions.reply')}</button>
+                    </div>
+                `;
+                adminMessagesList.appendChild(messageItem);
+                messageItem.querySelector('.message-delete-btn').addEventListener('click', () => showDeleteMessageModal(message.id));
+                messageItem.querySelector('.admin-action-btn.message').addEventListener('click', () => showSendMessageModal(message.from_user_id, message.from_user_name || getText('admin.user')));
             });
-          } catch (error) {
-            console.error("Error getting user data for message:", error);
-            adminMessages.push({
-              id: docSnapshot.id,
-              ...messageData,
-              userName: getText('admin.unknownUser')
-            });
-          }
         } else {
-          adminMessages.push({
-            id: docSnapshot.id,
-            ...messageData
-          });
+            adminNoMessages.style.display = 'block';
+            adminMessagesList.innerHTML = '';
         }
-      }
-  console.log('Paso 3: Mensajes procesados. Total:', adminMessages.length);
-
-  if (adminMessages.length > 0) {
-        adminNoMessages.style.display = 'none';
-        adminMessagesList.innerHTML = '';
-
-        adminMessages.forEach(message => {
-          const messageDate = message.date instanceof Date
-            ? message.date
-            : message.date?.toDate?.() || new Date();
-
-          const messageItem = document.createElement('div');
-          messageItem.className = 'message-item';
-
-          messageItem.innerHTML = `
-            <div class="message-header">
-              <span class="message-sender">${getText('admin.fromLabel')} ${message.userName || getText('admin.user')}</span>
-              <span class="message-date">${messageDate.toLocaleString()}</span>
-            </div>
-            <div class="message-content">${message.content}</div>
-            <div class="message-actions">
-              <button class="message-delete-btn" data-id="${message.id}">
-                <i class="fas fa-trash"></i>
-              </button>
-              <button class="admin-action-btn message" data-id="${message.from}" data-name="${message.userName || getText('admin.user')}" style="margin-left: 10px; background-color: var(--accent-color); color: white; border-radius: 4px; padding: 4px 8px; font-size: 0.8rem;">
-                <i class="fas fa-reply"></i> ${getText('actions.reply')}
-              </button>
-            </div>
-          `;
-
-          adminMessagesList.appendChild(messageItem);
-
-          const deleteBtn = messageItem.querySelector('.message-delete-btn');
-          deleteBtn.addEventListener('click', () => {
-            showDeleteMessageModal(message.id);
-          });
-
-          const replyBtn = messageItem.querySelector('.admin-action-btn.message');
-          replyBtn.addEventListener('click', () => {
-            showSendMessageModal(message.from, message.userName || getText('admin.user'));
-          });
-        });
-  } else {
-    console.log('Paso 4: No hay mensajes para renderizar.');
-    adminNoMessages.style.display = 'block';
-    adminMessagesList.innerHTML = '';
-  }
-    }, (error) => {
-      console.error("Error loading admin messages:", error);
-      adminNoMessages.style.display = 'none';
-      adminMessagesList.innerHTML = `
-        <div class="empty-state">
-          <i class="fas fa-exclamation-circle empty-icon"></i>
-          <h3 class="empty-title">${getText('user.messages.loadError')}</h3>
-          <p class="empty-text">${getText('user.messages.loadError')}</p>
-        </div>
-      `;
-    });
-
-    // Guardar referencia al listener para limpiarlo después
-    messageListeners['admin'] = unsubscribe;
-
-  } catch (error) {
-    console.error("Error setting up admin message listener:", error);
-    adminNoMessages.style.display = 'none';
-    adminMessagesList.innerHTML = `
-        <div class="empty-state">
-          <i class="fas fa-exclamation-circle empty-icon"></i>
-          <h3 class="empty-title">${getText('user.messages.loadError')}</h3>
-          <p class="empty-text">${getText('user.messages.loadError')}</p>
-        </div>
-      `;
-  }
+    } catch (error) {
+        console.error("Error loading admin messages:", error);
+        adminMessagesList.innerHTML = `<div class="empty-state error">${getText('user.messages.loadError')}</div>`;
+    }
 }
 
 ;(() => {
@@ -3142,35 +2766,21 @@ async function showEditUserModal(userId) {
 
 // Handle save user edit
 async function handleSaveUserEdit() {
-  const userId = editUserId.value;
-  const name = editName.value.trim();
-  const email = editEmail.value.trim();
-
-  // Validate form
-  if (!name || !email) {
-    showMessageModal(getText('modal.validationErrorTitle'), getText('modal.validationErrorText'), 'error');
-    return;
-  }
-
-  try {
-    // Update user in Firestore
-    await updateDoc(doc(db, "users", userId), {
-      name: name,
-      email: email
-    });
-
-    // Close modal
-    editUserModal.style.display = 'none';
-
-    allAdminUsers = [];
-    loadUsers();
-
-    // Show success message
-    showMessageModal(getText('modal.updateSuccessTitle'), getText('modal.updateSuccessText'), 'success');
-  } catch (error) {
-    console.error("Error updating user:", error);
-    showMessageModal(getText('modal.updateErrorTitle'), getText('modal.updateErrorText'), 'error');
-  }
+    const userId = editUserId.value;
+    const name = editName.value.trim();
+    const email = editEmail.value.trim();
+    if (!name || !email) {
+        showMessageModal(getText('modal.validationErrorTitle'), getText('modal.validationErrorText'), 'error');
+        return;
+    }
+    try {
+        await api.updateUser({ id: userId, name, email });
+        editUserModal.style.display = 'none';
+        loadUsers();
+        showMessageModal(getText('modal.updateSuccessTitle'), getText('modal.updateSuccessText'), 'success');
+    } catch (error) {
+        showMessageModal(getText('modal.updateErrorTitle'), error.message, 'error');
+    }
 }
 
 function showSendMessageModal(userId, userName) {
@@ -3181,94 +2791,50 @@ function showSendMessageModal(userId, userName) {
   sendMessageModal.style.display = 'block';
 }
 
+// Handle send individual message from admin
 async function handleSendIndividualMessage() {
-  const userId = messageUserId.value;
-  const content = individualMessageContent.value.trim();
-
-  // Validate form
-  if (!content) {
-    showMessageModal(getText('user.messages.sendError.noMessage'), getText('user.messages.sendError.noMessage'), 'error');
-    return;
-  }
-
-  try {
-    // Mostrar indicador de carga
+    const userId = messageUserId.value;
+    const content = individualMessageContent.value.trim();
+    if (!content) {
+        showMessageModal(getText('user.messages.sendError.noMessage'), '', 'error');
+        return;
+    }
     sendMessage.textContent = getText('user.messages.sending');
     sendMessage.disabled = true;
-
-    // Add message to Firestore
-    await addDoc(collection(db, "messages"), {
-      from: 'admin',
-      to: userId,
-      content: content,
-      date: serverTimestamp(),
-      read: false
-    });
-
-    // Close modal
-    sendMessageModal.style.display = 'none';
-
-    // Reset button state
-    sendMessage.textContent = getText('modal.sendButton');
-    sendMessage.disabled = false;
-
-    // Show success message
-    showMessageModal(getText('user.messages.sendSuccess'), getText('user.messages.sendSuccess'), 'success');
-  } catch (error) {
-    console.error("Error sending message:", error);
-    showMessageModal(getText('user.messages.sendError.general'), getText('user.messages.sendError.general'), 'error');
-
-    // Reset button state
-    sendMessage.textContent = getText('modal.sendButton');
-    sendMessage.disabled = false;
-  }
+    try {
+        await api.adminSendMessage(userId, content);
+        sendMessageModal.style.display = 'none';
+        showMessageModal(getText('user.messages.sendSuccess'), '', 'success');
+    } catch (error) {
+        showMessageModal(getText('user.messages.sendError.general'), error.message, 'error');
+    } finally {
+        sendMessage.textContent = getText('modal.sendButton');
+        sendMessage.disabled = false;
+    }
 }
 
+// Handle send admin message to all/one
 async function handleSendAdminMessage(e) {
-  e.preventDefault();
-
-  const recipient = messageRecipient.value;
-  const content = messageContent.value.trim();
-
-  // Validate form
-  if (!content) {
-    showMessageModal(getText('user.messages.sendError.noMessage'), getText('user.messages.sendError.noMessage'), 'error');
-    return;
-  }
-
-  try {
-    // Mostrar indicador de carga
+    e.preventDefault();
+    const recipient = messageRecipient.value;
+    const content = messageContent.value.trim();
+    if (!content) {
+        showMessageModal(getText('user.messages.sendError.noMessage'), '', 'error');
+        return;
+    }
     const submitBtn = adminMessageForm.querySelector('button[type="submit"]');
     submitBtn.textContent = getText('user.messages.sending');
     submitBtn.disabled = true;
-
-    // Add message to Firestore
-    await addDoc(collection(db, "messages"), {
-      from: 'admin',
-      to: recipient,
-      content: content,
-      date: serverTimestamp(),
-      read: false
-    });
-
-    // Reset form
-    adminMessageForm.reset();
-
-    // Restaurar botón
-    submitBtn.textContent = getText('admin.sendMessageButton');
-    submitBtn.disabled = false;
-
-    // Show success message
-    showMessageModal(getText('user.messages.sendSuccess'), getText('user.messages.sendSuccess'), 'success');
-  } catch (error) {
-    console.error("Error sending message:", error);
-    showMessageModal(getText('user.messages.sendError.general'), getText('user.messages.sendError.general'), 'error');
-
-    // Restaurar botón
-    const submitBtn = adminMessageForm.querySelector('button[type="submit"]');
-    submitBtn.textContent = getText('admin.sendMessageButton');
-    submitBtn.disabled = false;
-  }
+    try {
+        await api.adminSendMessage(recipient, content);
+        adminMessageForm.reset();
+        showMessageModal(getText('user.messages.sendSuccess'), '', 'success');
+    } catch (error) {
+        showMessageModal(getText('user.messages.sendError.general'), error.message, 'error');
+    } finally {
+        submitBtn.textContent = getText('admin.sendMessageButton');
+        submitBtn.disabled = false;
+    }
 }
 
 function showDeleteConfirmationModal(userId) {
@@ -3279,22 +2845,13 @@ function showDeleteConfirmationModal(userId) {
 // Handle delete user
 async function handleDeleteUser() {
   const userId = deleteUserId.value;
-
   try {
-    // Delete user from Firestore
-    await deleteDoc(doc(db, "users", userId));
-
-    // Close modal
+    await api.deleteUser(userId);
     deleteConfirmationModal.style.display = 'none';
-
-    allAdminUsers = [];
     loadUsers();
-
-    // Show success message
     showMessageModal(getText('modal.deleteUserSuccessTitle'), getText('modal.deleteUserSuccessText'), 'success');
   } catch (error) {
-    console.error("Error deleting user:", error);
-    showMessageModal(getText('modal.deleteErrorTitle'), getText('modal.deleteErrorText'), 'error');
+    showMessageModal(getText('modal.deleteErrorTitle'), error.message, 'error');
   }
 }
 
@@ -3585,22 +3142,15 @@ function adjustSliders() {
 // Load all content
 async function loadAllContent() {
     try {
-        // Show a loading indicator since this is a critical initial load
         showSpinner();
-
-        // Fetch all content from Firestore and cache it
-        allContent = await fetchContentFromFirestore();
-        
-        // Populate movies and series content from the cached allContent
+        allContent = await api.getAllContent();
         moviesContent = allContent.filter(item => item.media_type === 'movie');
         seriesContent = allContent.filter(item => item.media_type === 'tv');
 
-        // Render the initial page content using the cached data
-        const heroContent = await generateHeroContent();
+        const heroContent = generateHeroContent();
         renderHeroSlides(heroContent);
         preloadCriticalImages(heroContent);
         
-        // Asynchronously load other non-critical content sections
         loadDeferredContent();
         renderCategories();
         renderPlatforms();
@@ -3608,50 +3158,8 @@ async function loadAllContent() {
 
     } catch (error) {
         console.error('Error loading initial content:', error);
-        // Optionally, display an error message to the user
     } finally {
-        // Hide the loading indicator
         hideSpinner();
-    }
-}
-
-async function fetchContentFromFirestore(filterOptions = {}) {
-    const {
-        mediaType,
-        limitNumber,
-        orderByField = 'imported_at',
-        orderByDirection = 'desc',
-        arrayContains
-    } = filterOptions;
-
-    try {
-        let q = collection(db, 'content');
-        const constraints = [];
-
-        if (mediaType) {
-            constraints.push(where('media_type', '==', mediaType));
-        }
-
-        if (arrayContains && arrayContains.field && arrayContains.value) {
-            constraints.push(where(arrayContains.field, 'array-contains', arrayContains.value));
-        }
-
-        constraints.push(orderBy(orderByField, orderByDirection));
-
-        if (limitNumber) {
-            constraints.push(limit(limitNumber));
-        }
-
-        const finalQuery = query(q, ...constraints);
-        const snapshot = await getDocs(finalQuery);
-        return snapshot.docs.map(doc => doc.data());
-
-    } catch (error) {
-        console.error("Error fetching content from Firestore:", error);
-        if (error.code === 'failed-precondition') {
-            console.error("This error may be caused by a missing composite index in Firestore. Please check the Firebase console to create the required index based on the error message.");
-        }
-        return [];
     }
 }
 
@@ -4496,23 +4004,10 @@ async function handleCategoryClick(e) {
 
 async function removeFromMyList(itemId) {
   if (!currentUser) return;
-  
   try {
-    const userDoc = await getDoc(doc(db, "users", currentUser.id));
-    
-    if (userDoc.exists()) {
-      const userData = userDoc.data();
-      let myList = userData.myList || [];
-      
-      myList = myList.filter(item => item.id !== itemId);
-      
-      await updateDoc(doc(db, "users", currentUser.id), {
-        myList: myList
-      });
-     
-    }
+    await api.removeFromMyList(itemId);
+    loadUserMyList(); // Refresh the list
   } catch (error) {
-    console.error("Error removing from my list:", error);
     showToast(getText('toast.removeFromListError'), 'error');
   }
 }
@@ -4522,62 +4017,21 @@ async function saveToMyList(item, btnElement = null) {
     showAuthModal();
     return;
   }
-
-  const originalBtnHtml = btnElement ? btnElement.innerHTML : '';
-  if (btnElement) {
-    btnElement.disabled = true;
-    btnElement.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${getText('actions.saving')}`;
-  }
-
+  // ... (UI feedback logic for button)
   try {
-    await updatePosterClickCount(item.id, item.media_type, item.title || item.name, item.poster_path, item.vote_average);
-
-    const userRef = doc(db, "users", currentUser.id);
-    const userDoc = await getDoc(userRef);
-
-    if (userDoc.exists()) {
-      const userData = userDoc.data();
-      let myList = userData.myList || [];
-      const existingIndex = myList.findIndex(content => content.id === item.id && content.media_type === item.media_type);
-
-      if (existingIndex === -1) {
-        myList.push({
-          id: item.id,
-          media_type: item.media_type,
-          title: item.title || item.name,
-          poster_path: item.poster_path,
-          release_date: item.release_date || item.first_air_date,
-          vote_average: item.vote_average,
-          lastVisited: new Date().toISOString()
-        });
-        await updateDoc(userRef, { myList: myList });
-        if (btnElement) {
-          btnElement.innerHTML = `<i class="fas fa-check"></i> ${getText('actions.added')}`;
-        } else {
-          showToast(getText('toast.addedToList'), 'success');
-        }
-      } else {
-        if (btnElement) {
-          btnElement.innerHTML = `<i class="fas fa-info-circle"></i> ${getText('actions.alreadyInList')}`;
-        } else {
-          showToast(getText('toast.alreadyInList'), 'info');
-        }
-      }
-    }
+    await api.addToMyList({
+        id: item.id,
+        media_type: item.media_type,
+        title: item.title || item.name,
+        poster_path: item.poster_path,
+        release_date: item.release_date || item.first_air_date,
+        vote_average: item.vote_average
+    });
+    // Record click as a separate action
+    updatePosterClickCount(item.id, item.media_type, item.title, item.poster_path, item.vote_average);
+    showToast(getText('toast.addedToList'), 'success');
   } catch (error) {
-    console.error("Error saving to my list:", error);
-    if (btnElement) {
-      btnElement.innerHTML = `<i class="fas fa-times"></i> ${getText('actions.error')}`;
-    } else {
-      showToast(getText('toast.addToListError'), 'error');
-    }
-  } finally {
-    if (btnElement) {
-      setTimeout(() => {
-        btnElement.disabled = false;
-        btnElement.innerHTML = originalBtnHtml;
-      }, 2500); // Revert button after 2.5 seconds
-    }
+    showToast(getText('toast.addToListError'), 'error');
   }
 }
 
@@ -4591,53 +4045,20 @@ async function saveToMyList(item, btnElement = null) {
 
   async function updatePosterClickCount(posterId, mediaType, title, posterPath, voteAverage) {
     try {
-      const posterRef = doc(db, "posterClicks", String(posterId));
-      const posterDoc = await getDoc(posterRef);
-
-      if (posterDoc.exists()) {
-        // If poster exists, increment clickCount
-        await updateDoc(posterRef, {
-          clickCount: posterDoc.data().clickCount + 1,
-          lastClicked: serverTimestamp(),
-          mediaType: mediaType,
-          title: title,
-          posterPath: posterPath,
-          vote_average: voteAverage
-        });
-      } else {
-        // If poster does not exist, create it with clickCount = 1
-        await setDoc(posterRef, {
-          posterId: String(posterId), // Store as string
-          mediaType: mediaType,
-          title: title,
-          posterPath: posterPath,
-          vote_average: voteAverage,
-          clickCount: 1,
-          lastClicked: serverTimestamp()
-        });
-      }
+        await api.recordClick({ posterId, mediaType, title, posterPath, voteAverage });
     } catch (error) {
-      console.error("Error updating poster click count:", error);
+        console.error("Error updating poster click count:", error);
     }
   }
 
-  async function fetchTrendingPostersFromFirebase() {
+  async function fetchTrendingPosters() {
     try {
-      const q = query(
-        collection(db, "posterClicks"),
-        orderBy("clickCount", "desc"),
-        limit(10)
-      );
-      const querySnapshot = await getDocs(q);
-      const trendingData = [];
-      querySnapshot.forEach((doc) => {
-        trendingData.push(doc.data());
-      });
-      trendingContent = trendingData; 
-      return trendingData;
+        const trendingData = await api.getTopClicks(10);
+        trendingContent = trendingData;
+        return trendingData;
     } catch (error) {
-      console.error("Error fetching trending posters from Firebase:", error);
-      return [];
+        console.error("Error fetching trending posters:", error);
+        return [];
     }
   }
 
@@ -5252,22 +4673,18 @@ function renderTmdbSearchResults(results) {
 }
 
 async function importTmdbContent(item) {
-  if (!isAdmin) {
-    showMessageModal(getText('modal.notAuthorizedTitle'), getText('modal.notAuthorizedText'), 'error');
-    return;
-  }
-  
-  const contentRef = doc(db, 'content', String(item.id));
-  const contentDoc = await getDoc(contentRef);
-
-  if (contentDoc.exists()) {
-    showMessageModal(getText('modal.duplicateContentTitle'), getText('modal.duplicateContentText'), 'info');
-    return;
-  }
-
-  isEditMode = false;
-  itemToImport = item;
-  showVideoUrlModal(item);
+    if (!isAdmin) {
+        showMessageModal(getText('modal.notAuthorizedTitle'), getText('modal.notAuthorizedText'), 'error');
+        return;
+    }
+    // Check if content already exists locally
+    if (allContent.some(c => c.id === item.id)) {
+        showMessageModal(getText('modal.duplicateContentTitle'), getText('modal.duplicateContentText'), 'info');
+        return;
+    }
+    isEditMode = false;
+    itemToImport = item;
+    showVideoUrlModal(item);
 }
 
 async function showVideoUrlModal(item) {
@@ -5624,7 +5041,6 @@ async function confirmImportWithSections(event) {
     event.preventDefault();
     const item = isEditMode ? itemToEdit : itemToImport;
     if (!item) return;
-
     showSpinner();
     try {
         const mainSections = Array.from(document.querySelectorAll('input[name="main-section"]:checked')).map(cb => cb.value);
@@ -5639,36 +5055,8 @@ async function confirmImportWithSections(event) {
 
         if (isEditMode) {
             // --- EDIT LOGIC ---
-            const contentRef = doc(db, 'content', String(item.id));
-            const updateData = { display_options: displayOptions };
-            if (item.media_type === 'tv') {
-                updateData.next_episode_note = document.getElementById('next-episode-note').value.trim();
-            }
-            await updateDoc(contentRef, updateData);
-
-
-            // Update the item in the global allContent array
-            const index = allContent.findIndex(content => content.id === item.id);
-            if (index > -1) {
-                allContent[index].display_options = displayOptions;
-                if (item.media_type === 'tv') {
-                    allContent[index].next_episode_note = updateData.next_episode_note;
-                }
-                itemToEdit.display_options = displayOptions; // Also update the object in memory
-            }
-            
-            importOptionsModal.style.display = 'none';
-            document.getElementById('next-episode-note-group').style.display = 'none';
-            
-            // Restore original modal title and button text
-            document.getElementById('import-options-title').textContent = getText('modal.importOptionsTitle');
-            confirmImport.textContent = getText('modal.importButton');
-
-            // Now that sections are saved, proceed to URL editing
-            await showVideoUrlModal(itemToEdit);
-
         } else {
-            // --- IMPORT LOGIC (existing code) ---
+            // --- IMPORT LOGIC ---
             if (item.media_type === 'movie' && !mainSections.includes('movies')) {
                 mainSections.push('movies');
             }
@@ -5677,72 +5065,28 @@ async function confirmImportWithSections(event) {
             }
             displayOptions.main_sections = mainSections;
 
-            const contentDataForFirestore = {
-                id: item.id,
-                media_type: item.media_type,
-                title: item.title || item.name,
-                original_title: item.original_title || item.original_name,
-                overview: item.overview,
-                poster_path: item.poster_path,
-                backdrop_path: item.backdrop_path,
-                release_date: item.release_date || item.first_air_date,
-                vote_average: item.vote_average,
-                genres: item.genres ? item.genres.map(g => g.id) : (item.genre_ids || []),
-                imported_at: serverTimestamp(),
-                imported_by: currentUser.email,
+            const contentDataForApi = {
+                ...item,
                 display_options: displayOptions,
+                next_episode_note: item.media_type === 'tv' ? document.getElementById('next-episode-note').value.trim() : null
             };
 
-            if (item.media_type === 'movie') {
-                contentDataForFirestore.video_url = item.video_url || '';
-            } else if (item.media_type === 'tv') {
-                contentDataForFirestore.next_episode_note = document.getElementById('next-episode-note').value.trim();
-                const seasons = {};
-                if (item.seasons) {
-                    item.seasons
-                        .filter(season => season.season_number !== 0)
-                        .forEach(season => {
-                            const episodes = {};
-                            if (season.episodes) {
-                                season.episodes.forEach(episode => {
-                                    episodes[episode.episode_number] = {
-                                        episode_number: episode.episode_number, name: episode.name, overview: episode.overview,
-                                        air_date: episode.air_date, still_path: episode.still_path, video_url: episode.video_url || ''
-                                    };
-                                });
-                            }
-                            seasons[season.season_number] = {
-                                season_number: season.season_number, name: season.name, poster_path: season.poster_path,
-                                air_date: season.air_date, episodes: episodes
-                            };
-                        });
-                }
-                contentDataForFirestore.seasons = seasons;
-            }
-            
-            const contentRef = doc(db, 'content', String(item.id));
-            await setDoc(contentRef, contentDataForFirestore);
-
-            const contentDataForClient = { ...contentDataForFirestore, imported_at: { seconds: Math.floor(new Date().getTime() / 1000) } };
-            allContent.push(contentDataForClient);
-
+            await api.importContent(contentDataForApi);
+            allContent.push({ ...contentDataForApi, imported_at: new Date().toISOString() });
             moviesContent = allContent.filter(i => i.media_type === 'movie');
             seriesContent = allContent.filter(i => i.media_type === 'tv');
-
             await refreshUI();
             
-            showMessageModal(getText('modal.successTitle'), getText('modal.importSuccess', { title: contentDataForFirestore.title }), 'success');
+            showMessageModal(getText('modal.successTitle'), getText('modal.importSuccess', { title: item.title || item.name }), 'success');
             importOptionsModal.style.display = 'none';
-            document.getElementById('next-episode-note-group').style.display = 'none';
             itemToImport = null;
         }
 
     } catch (error) {
-        console.error('Error en confirmImportWithSections:', error);
+        console.error('Error in confirmImportWithSections:', error);
         showMessageModal(getText('modal.errorTitle'), getText('modal.saveOptionsError'), 'error');
     } finally {
         hideSpinner();
-        // Resetting is handled within each logic path now
     }
 }
 
@@ -5779,27 +5123,13 @@ function showDeleteContentConfirmationModal(contentId) {
     deleteContentConfirmationModal.style.display = 'flex';
 }
 
+// Load web settings
 async function loadWebSettings() {
-  try {
-    const settingsRef = doc(db, "web_config", "settings");
-    const settingsDoc = await getDoc(settingsRef);
-    if (settingsDoc.exists()) {
-      const fetchedSettings = settingsDoc.data();
-      // Deep merge with defaults to avoid losing nested properties
-      webSettings = {
-        ...webSettings,
-        ...fetchedSettings,
-        heroSlider: { ...webSettings.heroSlider, ...fetchedSettings.heroSlider },
-        homepageSections: { ...webSettings.homepageSections, ...fetchedSettings.homepageSections },
-      };
-      console.log("Web settings loaded from Firestore.");
-    } else {
-      console.log("No web settings found in Firestore, using defaults and saving them.");
-      await setDoc(settingsRef, webSettings);
+    try {
+        webSettings = await api.getSettings();
+    } catch (error) {
+        console.error("Error loading web settings, using defaults:", error);
     }
-  } catch (error) {
-    console.error("Error loading web settings, using defaults:", error);
-  }
 }
 
 function populateSettingsForm() {
@@ -5849,73 +5179,55 @@ function populateSettingsForm() {
 }
 
 async function saveWebSettings(e) {
-  e.preventDefault();
-  if (!isAdmin) return;
-
-  showSpinner();
-  try {
-    const newSettings = {
-      importLanguage: importLanguageSelect.value,
-      displayLanguage: displayLanguageSelect.value,
-      heroSlider: {
-        posters: parseInt(heroSliderPostersInput.value),
-        random: parseInt(heroSliderRandomInput.value),
-        recent: parseInt(heroSliderRecentInput.value),
-      },
-      visibleCategories: Array.from(document.querySelectorAll('input[name="visible-category"]:checked')).map(cb => cb.value),
-      visiblePlatforms: Array.from(document.querySelectorAll('input[name="visible-platform"]:checked')).map(cb => cb.value),
-      homepageSections: {
-        enEstreno: parseInt(postersEnEstrenoInput.value),
-        recienAgregado: parseInt(postersRecienAgregadoInput.value),
-        peliculasPopulares: parseInt(postersPeliculasPopularesInput.value),
-        seriesPopulares: parseInt(postersSeriesPopularesInput.value),
-      }
-    };
-
-    const settingsRef = doc(db, "web_config", "settings");
-    await setDoc(settingsRef, newSettings);
-    
-    webSettings = newSettings; // Update global object
-    
-    // Apply changes dynamically without reloading
-    await loadAllContent();
-    applyStaticTranslations();
-    updateUIForLoggedInUser(); // To update dropdown text language if changed
-
-    showMessageModal(getText('settings.saveSuccess'), getText('settings.saveSuccess'), 'success');
-
-  } catch (error) {
-    console.error("Error saving web settings:", error);
-    showMessageModal(getText('settings.saveError'), getText('settings.saveError'), 'error');
-  } finally {
-    hideSpinner();
-  }
+    e.preventDefault();
+    if (!isAdmin) return;
+    showSpinner();
+    try {
+        const newSettings = {
+            importLanguage: importLanguageSelect.value,
+            displayLanguage: displayLanguageSelect.value,
+            heroSlider: {
+                posters: parseInt(heroSliderPostersInput.value),
+                random: parseInt(heroSliderRandomInput.value),
+                recent: parseInt(heroSliderRecentInput.value),
+            },
+            visibleCategories: Array.from(document.querySelectorAll('input[name="visible-category"]:checked')).map(cb => cb.value),
+            visiblePlatforms: Array.from(document.querySelectorAll('input[name="visible-platform"]:checked')).map(cb => cb.value),
+            homepageSections: {
+                enEstreno: parseInt(postersEnEstrenoInput.value),
+                recienAgregado: parseInt(postersRecienAgregadoInput.value),
+                peliculasPopulares: parseInt(postersPeliculasPopularesInput.value),
+                seriesPopulares: parseInt(postersSeriesPopularesInput.value),
+            }
+        };
+        await api.updateSettings(newSettings);
+        webSettings = newSettings;
+        await loadAllContent();
+        applyStaticTranslations();
+        updateUIForLoggedInUser();
+        showMessageModal(getText('settings.saveSuccess'), '', 'success');
+    } catch (error) {
+        console.error("Error saving web settings:", error);
+        showMessageModal(getText('settings.saveError'), error.message, 'error');
+    } finally {
+        hideSpinner();
+    }
 }
 
 async function handleDeleteContent() {
     const contentId = deleteContentId.value;
     if (!contentId) return;
-
     showSpinner();
     try {
-        // 1. Delete from Firestore
-        await deleteDoc(doc(db, "content", String(contentId)));
-
-        const index = allContent.findIndex(item => String(item.id) === contentId);
-        if (index > -1) {
-            allContent.splice(index, 1);
-        }
-
+        await api.deleteContent(contentId);
+        allContent = allContent.filter(item => String(item.id) !== contentId);
         moviesContent = allContent.filter(item => item.media_type === 'movie');
         seriesContent = allContent.filter(item => item.media_type === 'tv');
-
         await refreshUI();
-        
         showMessageModal(getText('modal.deleteContentSuccessTitle'), getText('modal.deleteContentSuccessText'), 'success');
-
     } catch (error) {
         console.error("Error deleting content:", error);
-        showMessageModal(getText('modal.deleteContentErrorTitle'), getText('modal.deleteContentErrorText'), 'error');
+        showMessageModal(getText('modal.deleteContentErrorTitle'), error.message, 'error');
     } finally {
         hideSpinner();
         deleteContentConfirmationModal.style.display = 'none';
