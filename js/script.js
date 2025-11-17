@@ -1,16 +1,4 @@
-// Import Firebase modules 
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-app.js";
-import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-analytics.js";
-import { firebaseConfig, API_KEY, ADMIN_EMAIL } from './config.js';
-import { GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-auth.js";
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-auth.js";
-import { getFirestore, collection, addDoc, getDocs, getDoc, doc, setDoc, updateDoc, query, where, orderBy, limit, serverTimestamp, onSnapshot, writeBatch, deleteDoc } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-firestore.js"; // Añadido deleteDoc
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
-const auth = getAuth(app);
-const db = getFirestore(app);
+import { API_KEY, ADMIN_EMAIL } from './config.js';
 const apiCache = new Map();
 
 const translations = {
@@ -1051,186 +1039,141 @@ function createSlug(title) {
 }
 
 // Initialize authentication
-function initAuth() {
-  onAuthStateChanged(auth, async (user) => {
-    if (user) {
-      hideAuthModal();
-      try {
-        const userDoc = await getDoc(doc(db, "users", user.uid));
-        if (userDoc.exists()) {
-          currentUser = { id: user.uid, ...userDoc.data() };
+async function initAuth() {
+    try {
+        const response = await fetch('api/auth.php?action=check_session');
+        const data = await response.json();
+
+        if (data.authenticated) {
+            currentUser = data.user;
+            isAdmin = data.user.isAdmin;
+            hideAuthModal();
         } else {
-          const newUser = {
-            name: user.displayName || user.email.split('@')[0],
-            email: user.email,
-            registeredAt: serverTimestamp(),
-            myList: [],
-            messagesSent: [],
-            lastActivity: serverTimestamp(),
-            isAdmin: user.email === ADMIN_EMAIL,
-          };
-          await setDoc(doc(db, "users", user.uid), newUser);
-          currentUser = { id: user.uid, ...newUser };
+            currentUser = null;
+            isAdmin = false;
         }
-        isAdmin = currentUser.email === ADMIN_EMAIL;
-        updateDoc(doc(db, "users", user.uid), { lastActivity: serverTimestamp() });
-      } catch (error) {
-        console.error("Error getting user data:", error);
-      }
-    } else {
-      currentUser = null;
-      isAdmin = false;
+    } catch (error) {
+        console.error("Error checking session:", error);
+        currentUser = null;
+        isAdmin = false;
     }
+
     updateUIForLoggedInUser();
-    
+
     // Load content after user status is known
     try {
-      await loadAllContent();
-      handleInitialLoadURL(); // Call this AFTER content is loaded
+        await loadAllContent();
+        handleInitialLoadURL(); // Call this AFTER content is loaded
     } catch (error) {
-      console.error("Failed to load initial content:", error);
+        console.error("Failed to load initial content:", error);
     }
-  });
 
-  // Add event listeners for auth forms
-  loginForm.addEventListener('submit', handleLogin);
-  registerForm.addEventListener('submit', handleRegister);
-  showRegister.addEventListener('click', () => {
-    loginFormContainer.style.display = 'none';
-    registerFormContainer.style.display = 'block';
-  });
-  showLogin.addEventListener('click', () => {
-    registerFormContainer.style.display = 'none';
-    loginFormContainer.style.display = 'block';
-  });
-  authCloseBtn.addEventListener('click', hideAuthModal);
+    // Add event listeners for auth forms
+    loginForm.addEventListener('submit', handleLogin);
+    registerForm.addEventListener('submit', handleRegister);
+    showRegister.addEventListener('click', () => {
+        loginFormContainer.style.display = 'none';
+        registerFormContainer.style.display = 'block';
+    });
+    showLogin.addEventListener('click', () => {
+        registerFormContainer.style.display = 'none';
+        loginFormContainer.style.display = 'block';
+    });
+    authCloseBtn.addEventListener('click', hideAuthModal);
 }
 
+// Google Sign-In is removed as it's a Firebase-specific feature.
 function handleGoogleSignIn() {
-  const provider = new GoogleAuthProvider()
-  provider.setCustomParameters({
-    prompt: "select_account",
-  })
-
-  signInWithPopup(auth, provider)
-    .then((result) => {
-
-      showSpinner()
-
-      hideAuthModal(); 
-    })
-    .catch((error) => {
-      hideSpinner()
-      console.error("Error en autenticación con Google:", error)
-
-      // Mostrar error en ambos formularios
-      loginError.textContent = "Error al iniciar sesión con Google. Inténtalo de nuevo."
-      loginError.style.display = "block"
-
-      registerError.textContent = "Error al registrarse con Google. Inténtalo de nuevo."
-      registerError.style.display = "block"
-    })
+    alert("Inicio de sesión con Google no está disponible.");
 }
+
 
 // Handle login
 async function handleLogin(e) {
-  e.preventDefault();
+    e.preventDefault();
 
-  const email = loginEmail.value.trim();
-  const password = loginPassword.value;
+    const email = loginEmail.value.trim();
+    const password = loginPassword.value;
 
-  // Show spinner
-  showSpinner();
+    showSpinner();
 
-  try {
-    // Sign in with Firebase Auth
-    await signInWithEmailAndPassword(auth, email, password);
+    try {
+        const response = await fetch('api/auth.php?action=login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+        });
+        const data = await response.json();
 
-    // Clear form
-    loginForm.reset();
-    loginError.style.display = 'none';
-    
-  } catch (error) {
-    // Hide spinner
-    hideSpinner();
+        hideSpinner();
 
-    // Show error
-    loginError.textContent = getAuthErrorMessage(error.code);
-    loginError.style.display = 'block';
-  }
+        if (data.success) {
+            currentUser = data.user;
+            isAdmin = data.user.isAdmin;
+            updateUIForLoggedInUser();
+            hideAuthModal();
+            loadAllContent(); // Recargar contenido para reflejar datos específicos del usuario
+            loginForm.reset();
+            loginError.style.display = 'none';
+        } else {
+            loginError.textContent = data.message;
+            loginError.style.display = 'block';
+        }
+    } catch (error) {
+        hideSpinner();
+        loginError.textContent = 'Error de conexión con el servidor.';
+        loginError.style.display = 'block';
+    }
 }
 
 // Handle register
 async function handleRegister(e) {
-  e.preventDefault();
+    e.preventDefault();
 
-  const name = registerName.value.trim();
-  const email = registerEmail.value.trim();
-  const password = registerPassword.value;
-  const confirmPassword = registerConfirmPassword.value;
+    const name = registerName.value.trim();
+    const email = registerEmail.value.trim();
+    const password = registerPassword.value;
+    const confirmPassword = registerConfirmPassword.value;
 
-  // Validate form
-  if (password !== confirmPassword) {
-    registerError.textContent = 'Las contraseñas no coinciden';
-    registerError.style.display = 'block';
-    registerSuccess.style.display = 'none';
-    return;
-  }
+    if (password !== confirmPassword) {
+        registerError.textContent = 'Las contraseñas no coinciden';
+        registerError.style.display = 'block';
+        return;
+    }
 
-  // Show spinner
-  showSpinner();
+    showSpinner();
 
-  try {
-    // Create user with Firebase Auth
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    const user = userCredential.user;
+    try {
+        const response = await fetch('api/auth.php?action=register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, email, password }),
+        });
+        const data = await response.json();
 
-    // Add user data to Firestore
-    await setDoc(doc(db, "users", user.uid), {
-      name: name,
-      email: email,
-      registeredAt: serverTimestamp(),
-      myList: [],
-      messagesSent: [],
-      lastActivity: serverTimestamp(),
-      isAdmin: user.email === ADMIN_EMAIL
-    });
+        hideSpinner();
 
-    // Show success message
-    registerError.style.display = 'none';
-    registerSuccess.textContent = 'Registro exitoso. Iniciando sesión...';
-    registerSuccess.style.display = 'block';
-
-    // Clear form
-    registerForm.reset();
-    
-
-  } catch (error) {
-    // Hide spinner
-    hideSpinner();
-
-    // Show error
-    registerError.textContent = getAuthErrorMessage(error.code);
-    registerError.style.display = 'block';
-    registerSuccess.style.display = 'none';
-  }
-}
-
-// Get auth error message
-function getAuthErrorMessage(errorCode) {
-  switch (errorCode) {
-    case 'auth/email-already-in-use':
-      return 'Este correo electrónico ya está registrado';
-    case 'auth/invalid-email':
-      return 'Correo electrónico inválido';
-    case 'auth/weak-password':
-      return 'La contraseña debe tener al menos 6 caracteres';
-    case 'auth/user-not-found':
-    case 'auth/wrong-password':
-      return 'Correo electrónico o contraseña incorrectos';
-    default:
-      return 'Error de autenticación: ' + errorCode;
-  }
+        if (data.success) {
+            registerSuccess.textContent = data.message;
+            registerSuccess.style.display = 'block';
+            registerError.style.display = 'none';
+            registerForm.reset();
+            // Switch to login view after successful registration
+            setTimeout(() => {
+                registerFormContainer.style.display = 'none';
+                loginFormContainer.style.display = 'block';
+                registerSuccess.style.display = 'none';
+            }, 2000);
+        } else {
+            registerError.textContent = data.message;
+            registerError.style.display = 'block';
+            registerSuccess.style.display = 'none';
+        }
+    } catch (error) {
+        hideSpinner();
+        registerError.textContent = 'Error de conexión con el servidor.';
+        registerError.style.display = 'block';
+    }
 }
 
 function updateUIForLoggedInUser() {
@@ -1273,12 +1216,6 @@ function updateUIForLoggedInUser() {
       statsPanelLinkItem.addEventListener('click', () => { profileDropdown.classList.remove('active'); showStatsPanel(); });
       profileDropdown.appendChild(statsPanelLinkItem);
 
-      const connectedUsersLinkItem = document.createElement('div');
-      connectedUsersLinkItem.className = 'profile-dropdown-item';
-      connectedUsersLinkItem.id = 'connected-users-link';
-      connectedUsersLinkItem.innerHTML = `<i class="fas fa-users"></i><span data-translate="user.profile.dropdown.connected">${getText('user.profile.dropdown.connected')}</span>`;
-      connectedUsersLinkItem.addEventListener('click', () => { profileDropdown.classList.remove('active'); showConnectedUsersPanel(); });
-      profileDropdown.appendChild(connectedUsersLinkItem);
       
       if (settingsTab) {
         settingsTab.style.display = 'block';
@@ -1884,42 +1821,31 @@ function toggleProfileDropdown() {
 })()
 
 async function handleLogout() {
-  try {
-    // Limpiar todos los listeners de mensajes
-    Object.values(messageListeners).forEach(unsubscribe => {
-      if (typeof unsubscribe === 'function') {
-        unsubscribe();
-      }
-    });
-    messageListeners = {};
+    try {
+        await fetch('api/auth.php?action=logout');
 
-    // Sign out from Firebase Auth
-    await signOut(auth);
+        currentUser = null;
+        isAdmin = false;
 
-    // Clear current user
-    currentUser = null;
-    isAdmin = false;
+        updateUIForLoggedInUser();
 
-    // Update UI for unauthenticated user
-    updateUIForLoggedInUser();
+        // Hide all protected views and reset forms
+        userProfilePage.classList.remove('active');
+        adminPanel.classList.remove('active');
+        statsView.classList.remove('active');
+        connectedUsersView.classList.remove('active');
+        managementPanel.style.display = 'none';
+        loginForm.reset();
+        registerForm.reset();
+        loginError.style.display = 'none';
+        registerError.style.display = 'none';
+        registerSuccess.style.display = 'none';
 
-    // Hide all protected views
-    userProfilePage.classList.remove('active');
-    adminPanel.classList.remove('active');
-    statsView.classList.remove('active');
-    connectedUsersView.classList.remove('active');
-    managementPanel.style.display = 'none';
-    loginForm.reset();
-    registerForm.reset();
-    loginError.style.display = 'none';
-    registerError.style.display = 'none';
-    registerSuccess.style.display = 'none';
-
-    // Navigate to home view
-    navigateToView('home');
-  } catch (error) {
-    console.error("Error signing out:", error);
-  }
+        // Navigate to home view
+        navigateToView('home');
+    } catch (error) {
+        console.error("Error signing out:", error);
+    }
 }
 
 // Show user profile
@@ -1992,11 +1918,10 @@ async function loadUserMyList() {
     if (!currentUser) return;
 
     try {
-        const userDoc = await getDoc(doc(db, "users", currentUser.id));
-        if (userDoc.exists() && userDoc.data().myList && userDoc.data().myList.length > 0) {
-            let myList = userDoc.data().myList;
-            myList.sort((a, b) => (b.lastVisited || 0) - (a.lastVisited || 0));
-            
+        const response = await fetch('api/users.php?action=get_my_list');
+        const myList = await response.json();
+
+        if (myList && myList.length > 0) {
             // Paginate "My List"
             await setupContentPagination(myList, profileMyListGrid, document.getElementById('load-more-my-list'));
         } else {
@@ -2015,119 +1940,61 @@ async function loadUserMyList() {
 }
 
 
-// Load user's messages with real-time updates
-function loadUserMessages() {
-  if (!currentUser) return;
+async function loadUserMessages() {
+    if (!currentUser) return;
 
-  try {
-    // Limpiar listener anterior si existe
-    if (messageListeners[currentUser.id]) {
-      messageListeners[currentUser.id]();
-    }
+    try {
+        const response = await fetch('api/messages.php?action=get_user_messages');
+        const userMessages = await response.json();
 
-    // Mostrar estado de carga
-    messagesList.innerHTML = `
-      <div class="message-item" style="text-align: center;">
-        <div class="spinner" style="width: 30px; height: 30px; margin: 0 auto;"></div>
-        <p style="margin-top: 10px;">${getText('user.messages.loading')}</p>
-      </div>
-    `;
-    noMessages.style.display = 'none';
+        if (userMessages && userMessages.length > 0) {
+            noMessages.style.display = 'none';
+            messagesList.innerHTML = '';
 
-    const messagesQuery = query(
-      collection(db, "messages"),
-      where("to", "in", [currentUser.id, "all"]),
-      orderBy("date", "desc")
-    );
+            userMessages.forEach(message => {
+                const messageDate = new Date(message.date);
 
-    const unsubscribe = onSnapshot(messagesQuery, (snapshot) => {
-      const userMessages = [];
+                const messageItem = document.createElement('div');
+                messageItem.className = 'message-item';
 
-      snapshot.forEach((doc) => {
-        userMessages.push({
-          id: doc.id,
-          ...doc.data()
-        });
-      });
+                const canDelete = (message.from_user_id === currentUser.id) || isAdmin;
 
-      if (userMessages.length > 0) {
-        noMessages.style.display = 'none';
-        messagesList.innerHTML = '';
+                messageItem.innerHTML = `
+                    <div class="message-header">
+                        <span class="message-sender">${message.from_user_id === null ? getText('user.messages.sender.admin') : message.from_user_id === currentUser.id ? getText('user.messages.sender.you') : 'Usuario'}</span>
+                        <span class="message-date">${messageDate.toLocaleString()}</span>
+                    </div>
+                    <div class="message-content">${message.content}</div>
+                    ${canDelete ? `
+                        <div class="message-actions">
+                            <button class="message-delete-btn" data-id="${message.id}">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    ` : ''}
+                `;
 
-        userMessages.forEach(message => {
-          const messageDate = message.date instanceof Date
-            ? message.date
-            : message.date?.toDate?.() || new Date();
+                messagesList.appendChild(messageItem);
 
-          const messageItem = document.createElement('div');
-          messageItem.className = 'message-item';
-
-          const canDelete = (message.from === currentUser.id) || isAdmin;
-
-          messageItem.innerHTML = `
-            <div class="message-header">
-              <span class="message-sender">${message.from === 'admin' ? getText('user.messages.sender.admin') : message.from === currentUser.id ? getText('user.messages.sender.you') : getText('user.messages.sender.system')}</span>
-              <span class="message-date">${messageDate.toLocaleString()}</span>
-            </div>
-            <div class="message-content">${message.content}</div>
-            ${canDelete ? `
-              <div class="message-actions">
-                <button class="message-delete-btn" data-id="${message.id}">
-                  <i class="fas fa-trash"></i>
-                </button>
-              </div>
-            ` : ''}
-          `;
-
-          messagesList.appendChild(messageItem);
-
-          // Agregar event listener al botón de eliminar si existe
-          if (canDelete) {
-            const deleteBtn = messageItem.querySelector('.message-delete-btn');
-            deleteBtn.addEventListener('click', () => {
-              showDeleteMessageModal(message.id);
+                if (canDelete) {
+                    const deleteBtn = messageItem.querySelector('.message-delete-btn');
+                    deleteBtn.addEventListener('click', () => {
+                        showDeleteMessageModal(message.id);
+                    });
+                }
             });
-          }
-        });
-
-        const unreadMessages = userMessages.filter(message =>
-          message.from === 'admin' && !message.read
-        );
-        updateNotificationBadge(unreadMessages.length);
-
-      } else {
-        noMessages.style.display = 'block';
-        messagesList.innerHTML = '';
-        updateNotificationBadge(0); // AÑADIR ESTA LÍNEA
-      }
-    }, (error) => {
-      console.error("Error loading user's messages:", error);
-      noMessages.style.display = 'none';
-      messagesList.innerHTML = `
-        <div class="empty-state">
-          <i class="fas fa-exclamation-circle empty-icon"></i>
-          <h3 class="empty-title">${getText('user.messages.loadError')}</h3>
-          <p class="empty-text">${getText('user.messages.loadError')}</p>
-        </div>
-      `;
-      updateNotificationBadge(0); // AÑADIR ESTA LÍNEA
-    });
-
-    // Guardar referencia al listener para limpiarlo después
-    messageListeners[currentUser.id] = unsubscribe;
-
-  } catch (error) {
-    console.error("Error setting up message listener:", error);
-    noMessages.style.display = 'none';
-    messagesList.innerHTML = `
-      <div class="empty-state">
-        <i class="fas fa-exclamation-circle empty-icon"></i>
-        <h3 class="empty-title">${getText('user.messages.loadError')}</h3>
-        <p class="empty-text">${getText('user.messages.loadError')}</p>
-      </div>
-    `;
-    updateNotificationBadge(0); // AÑADIR ESTA LÍNEA
-  }
+             updateNotificationBadge(0); // Los mensajes se marcan como leídos en el backend
+        } else {
+            noMessages.style.display = 'block';
+            messagesList.innerHTML = '';
+            updateNotificationBadge(0);
+        }
+    } catch (error) {
+        console.error("Error loading user's messages:", error);
+        noMessages.style.display = 'none';
+        messagesList.innerHTML = `<div class="empty-state error">${getText('user.messages.loadError')}</div>`;
+        updateNotificationBadge(0);
+    }
 }
 
 // Añadir esta función después de loadUserMessages
@@ -2149,212 +2016,90 @@ function updateNotificationBadge(count) {
   }
 }
 
-// Añadir esta función para marcar mensajes como leídos
-async function markMessagesAsRead() {
-  if (!currentUser) return;
-
-  try {
-    // Obtener todos los mensajes no leídos para el usuario
-    const messagesQuery = query(
-      collection(db, "messages"),
-      where("to", "in", [currentUser.id, "all"]),
-      where("read", "==", false)
-    );
-
-    const unreadSnapshot = await getDocs(messagesQuery);
-
-    // Si no hay mensajes no leídos, salir
-    if (unreadSnapshot.empty) return;
-
-    // Actualizar cada mensaje para marcarlo como leído
-    const batch = writeBatch(db);
-    unreadSnapshot.forEach((doc) => {
-      batch.update(doc.ref, { read: true });
-    });
-
-    await batch.commit();
-
-    // Actualizar el badge de notificación
-    updateNotificationBadge(0);
-
-  } catch (error) {
-    console.error("Error marking messages as read:", error);
-  }
-}
-
-// Check user message limit
+// Check user message limit (placeholder - to be implemented in PHP if needed)
 async function checkUserMessageLimit() {
-  if (!currentUser || isAdmin) {
-    // Los administradores no tienen límite de mensajes
-    sendUserMessageBtn.disabled = false;
-    userMessageContent.value = ''; // Clear message content
-    messageLimitInfo.textContent = getText('user.messages.adminNoLimit');
-    messageLimitInfo.className = 'message-limit-info';
-    return;
-  }
-
-  try {
-    // Obtener el documento del usuario para verificar los mensajes enviados
-    const userDoc = await getDoc(doc(db, "users", currentUser.id));
-
-    if (userDoc.exists()) {
-      const userData = userDoc.data();
-      const messagesSent = userData.messagesSent || [];
-
-      // Obtener la fecha actual (solo año, mes, día)
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      // Filtrar mensajes enviados hoy
-      const messagesToday = messagesSent.filter(msg => {
-        const msgDate = msg.date instanceof Date
-          ? msg.date
-          : msg.date?.toDate?.() || new Date();
-
-        const msgDateOnly = new Date(msgDate);
-        msgDateOnly.setHours(0, 0, 0, 0);
-
-        return msgDateOnly.getTime() === today.getTime();
-      });
-
-      // Verificar si el usuario ha alcanzado el límite diario
-      if (messagesToday.length >= 2) {
-        sendUserMessageBtn.disabled = true;
-        messageLimitInfo.textContent = getText('user.messages.messageLimit.limitReached');
-        messageLimitInfo.className = 'message-limit-info message-limit-warning';
-      } else {
+    if (!currentUser || isAdmin) {
         sendUserMessageBtn.disabled = false;
-        messageLimitInfo.textContent = getText('user.messages.messageLimit.canSend', { count: 2 - messagesToday.length });
+        userMessageContent.value = '';
+        messageLimitInfo.textContent = getText('user.messages.adminNoLimit');
         messageLimitInfo.className = 'message-limit-info';
-      }
+        return;
     }
-  } catch (error) {
-    console.error("Error checking message limit:", error);
+    // This functionality would require a backend check. For now, we'll allow messages.
     sendUserMessageBtn.disabled = false;
-    messageLimitInfo.textContent = getText('user.messages.messageLimit.error');
+    messageLimitInfo.textContent = getText('user.messages.messageLimit.canSend', { count: '∞' });
     messageLimitInfo.className = 'message-limit-info';
-  }
 }
 
 async function handleSendUserMessage() {
-  if (!currentUser) {
-    showMessageModal(getText('user.profile.restrictedAccess'), getText('user.profile.loginRequired'), 'info');
-    showAuthModal();
-    return;
-  }
+    if (!currentUser) {
+        showMessageModal(getText('user.profile.restrictedAccess'), getText('user.profile.loginRequired'), 'info');
+        showAuthModal();
+        return;
+    }
 
-  const content = userMessageContent.value.trim();
+    const content = userMessageContent.value.trim();
 
-  // Validate form
-  if (!content) {
-    showMessageModal(getText('user.messages.sendError.noMessage'), getText('user.messages.sendError.noMessage'), 'error');
-    return;
-  }
+    if (!content) {
+        showMessageModal(getText('user.messages.sendError.noMessage'), getText('user.messages.sendError.noMessage'), 'error');
+        return;
+    }
 
-  try {
-    // Mostrar indicador de carga
     sendUserMessageBtn.textContent = getText('user.messages.sending');
     sendUserMessageBtn.disabled = true;
 
-    // Obtener la fecha actual
-    const now = new Date();
-
-    // Agregar mensaje a Firestore
-    const messageRef = await addDoc(collection(db, "messages"), {
-      from: currentUser.id,
-      to: 'admin',
-      content: content,
-      date: serverTimestamp(),
-      read: false,
-      userName: currentUser.name
-    });
-
-    // Actualizar el registro de mensajes enviados por el usuario
-    const userRef = doc(db, "users", currentUser.id);
-    const userDoc = await getDoc(userRef);
-
-    if (userDoc.exists()) {
-      const userData = userDoc.data();
-      const messagesSent = userData.messagesSent || [];
-
-      // Agregar el nuevo mensaje al registro
-      messagesSent.push({
-        id: messageRef.id,
-        date: now
-
-      });
-
-      // Actualizar el documento del usuario
-      await updateDoc(userRef, {
-        messagesSent: messagesSent
-      });
-    }
-
-    // Limpiar el formulario
-    userMessageContent.value = '';
-
-    // Restaurar botón
-    sendUserMessageBtn.textContent = getText('user.messages.sendMessage');
-
-    // Verificar límite de mensajes
-    checkUserMessageLimit();
-
-    // Mostrar mensaje de éxito
-    showMessageModal(getText('user.messages.sendSuccess'), getText('user.messages.sendSuccess'), 'success');
-  } catch (error) {
-    console.error("Error sending user message:", error);
-    showMessageModal(getText('user.messages.sendError.general'), getText('user.messages.sendError.general'), 'error');
-
-    // Restaurar botón
-    sendUserMessageBtn.textContent = getText('user.messages.sendMessage');
-    sendUserMessageBtn.disabled = false;
-  }
-}
-
-// Show delete message modal
-function showDeleteMessageModal(messageId) {
-  deleteMessageId.value = messageId;
-  deleteMessageModal.style.display = 'block';
-}
-
-// Handle delete message
-async function handleDeleteMessage() {
-  const messageId = deleteMessageId.value;
-
-  try {
-    // Eliminar mensaje de Firestore
-    await deleteDoc(doc(db, "messages", messageId));
-
-    if (!isAdmin) {
-      const userRef = doc(db, "users", currentUser.id);
-      const userDoc = await getDoc(userRef);
-
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        let messagesSent = userData.messagesSent || [];
-
-        // Filtrar el mensaje eliminado
-        messagesSent = messagesSent.filter(msg => msg.id !== messageId);
-
-        // Actualizar el documento del usuario
-        await updateDoc(userRef, {
-          messagesSent: messagesSent
+    try {
+        const response = await fetch('api/messages.php?action=send_user_message', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: content })
         });
+        const data = await response.json();
 
-        // Verificar límite de mensajes
-        checkUserMessageLimit();
-      }
+        if (data.success) {
+            userMessageContent.value = '';
+            loadUserMessages(); // Recargar mensajes
+            showMessageModal(getText('user.messages.sendSuccess'), getText('user.messages.sendSuccess'), 'success');
+        } else {
+            showMessageModal(getText('user.messages.sendError.general'), data.message || getText('user.messages.sendError.general'), 'error');
+        }
+    } catch (error) {
+        console.error("Error sending user message:", error);
+        showMessageModal(getText('user.messages.sendError.general'), getText('user.messages.sendError.general'), 'error');
+    } finally {
+        sendUserMessageBtn.textContent = getText('user.messages.sendMessage');
+        sendUserMessageBtn.disabled = false;
+        // checkUserMessageLimit(); // Esta función necesita ser migrada también
     }
+}
 
-    // Cerrar modal
-    deleteMessageModal.style.display = 'none';
+function showDeleteMessageModal(messageId) {
+    deleteMessageId.value = messageId;
+    deleteMessageModal.style.display = 'block';
+}
 
-    // Mostrar mensaje de éxito
-    showMessageModal(getText('user.messages.deleteSuccess'), getText('user.messages.deleteSuccess'), 'success');
-  } catch (error) {
-    console.error("Error deleting message:", error);
-    showMessageModal(getText('user.messages.deleteError'), getText('user.messages.deleteError'), 'error');
-  }
+async function handleDeleteMessage() {
+    const messageId = deleteMessageId.value;
+
+    try {
+        const response = await fetch('api/messages.php?action=delete_message', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message_id: messageId })
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            loadUserMessages(); // Recargar mensajes
+            deleteMessageModal.style.display = 'none';
+            showMessageModal(getText('user.messages.deleteSuccess'), getText('user.messages.deleteSuccess'), 'success');
+        } else {
+            showMessageModal(getText('user.messages.deleteError'), data.message || getText('user.messages.deleteError'), 'error');
+        }
+    } catch (error) {
+        console.error("Error deleting message:", error);
+        showMessageModal(getText('user.messages.deleteError'), getText('user.messages.deleteError'), 'error');
+    }
 }
 
 // Show admin panel
@@ -2751,19 +2496,20 @@ async function loadUsers() {
 
     showSpinner();
     try {
-        if (allAdminUsers.length === 0) {
-            const usersSnapshot = await getDocs(collection(db, "users"));
-            allAdminUsers = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const response = await fetch('api/users.php?action=get_all_users');
+        const data = await response.json();
+
+        if (data.success) {
+            allAdminUsers = data.users;
+            registeredUsersCount.textContent = allAdminUsers.length;
+
+            // Note: Active user count will not be available with this simplified backend
+            activeUsersCount.textContent = 'N/A';
+
+            filterUsers();
+        } else {
+            usersGrid.innerHTML = `<div class="empty-state error">${data.message || getText('admin.loadUsersError')}</div>`;
         }
-
-        registeredUsersCount.textContent = allAdminUsers.length;
-
-        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-        const activeUsers = allAdminUsers.filter(user => (user.lastActivity?.toDate?.() || new Date(0)) > oneHourAgo);
-        activeUsersCount.textContent = activeUsers.length;
-
-        filterUsers();
-
     } catch (error) {
         console.error("Error loading users:", error);
         usersGrid.innerHTML = `<div class="empty-state error">${getText('admin.loadUsersError')}</div>`;
@@ -2881,159 +2627,73 @@ function renderAdminUsers(usersToRender, append = false) {
 }
 
 async function loadMessageRecipients() {
-  if (!isAdmin) return;
+    if (!isAdmin) return;
 
-  try {
-    // Clear previous options
-    while (messageRecipient.options.length > 1) {
-      messageRecipient.remove(1);
+    try {
+        while (messageRecipient.options.length > 1) {
+            messageRecipient.remove(1);
+        }
+
+        if (allAdminUsers.length === 0) {
+            await loadUsers(); // This will fetch all users if not already loaded
+        }
+
+        allAdminUsers.forEach(user => {
+            const option = document.createElement('option');
+            option.value = user.id;
+            option.textContent = user.username;
+            messageRecipient.appendChild(option);
+        });
+
+    } catch (error) {
+        console.error("Error loading message recipients:", error);
     }
-
-    const usersSnapshot = await getDocs(collection(db, "users"));
-
-    // Add users as options
-    usersSnapshot.forEach(doc => {
-      const userData = doc.data();
-      const option = document.createElement('option');
-      option.value = doc.id;
-      option.textContent = userData.name;
-      messageRecipient.appendChild(option);
-    });
-  } catch (error) {
-    console.error("Error loading message recipients:", error);
-  }
 }
 
-function loadAdminMessages() {
-  console.log('Paso 1: Se llamó a loadAdminMessages. El valor de isAdmin es:', isAdmin);
-  if (!isAdmin) return;
+async function loadAdminMessages() {
+    if (!isAdmin) return;
 
-  try {
-    // Limpiar listener anterior si existe
-    if (messageListeners['admin']) {
-      messageListeners['admin']();
-    }
-
-    // Mostrar estado de carga
-    adminMessagesList.innerHTML = `
-      <div class="message-item" style="text-align: center;">
-        <div class="spinner" style="width: 30px; height: 30px; margin: 0 auto;"></div>
-        <p style="margin-top: 10px;">${getText('user.messages.loading')}</p>
-      </div>
-    `;
+    adminMessagesList.innerHTML = `<div class="spinner"></div>`;
     adminNoMessages.style.display = 'none';
 
-    const messagesQuery = query(
-      collection(db, "messages"),
-      where("to", "==", "admin"),
-      orderBy("date", "desc")
-    );
+    try {
+        const response = await fetch('api/messages.php?action=get_admin_messages');
+        const messages = await response.json();
 
-const unsubscribe = onSnapshot(messagesQuery, async (snapshot) => {
-  console.log('Paso 2: Respuesta de Firestore recibida. Documentos:', snapshot.size);
-  const adminMessages = [];
+        if (messages && messages.length > 0) {
+            adminNoMessages.style.display = 'none';
+            adminMessagesList.innerHTML = '';
 
-      for (const docSnapshot of snapshot.docs) {
-        const messageData = docSnapshot.data();
+            messages.forEach(message => {
+                const messageDate = new Date(message.date);
+                const messageItem = document.createElement('div');
+                messageItem.className = 'message-item';
+                messageItem.innerHTML = `
+                    <div class="message-header">
+                        <span class="message-sender">${getText('admin.fromLabel')} ${message.from_username || getText('admin.unknownUser')}</span>
+                        <span class="message-date">${messageDate.toLocaleString()}</span>
+                    </div>
+                    <div class="message-content">${message.content}</div>
+                    <div class="message-actions">
+                        <button class="message-delete-btn" data-id="${message.id}"><i class="fas fa-trash"></i></button>
+                        <button class="admin-action-btn message" data-id="${message.from_user_id}" data-name="${message.from_username || getText('admin.unknownUser')}">
+                            <i class="fas fa-reply"></i> ${getText('actions.reply')}
+                        </button>
+                    </div>
+                `;
+                adminMessagesList.appendChild(messageItem);
 
-        if (messageData.from !== 'admin') {
-          try {
-            const userDoc = await getDoc(doc(db, "users", messageData.from));
-            const userName = userDoc.exists() ? userDoc.data().name : getText('admin.unknownUser');
-
-            adminMessages.push({
-              id: docSnapshot.id,
-              ...messageData,
-              userName: messageData.userName || userName
+                messageItem.querySelector('.message-delete-btn').addEventListener('click', () => showDeleteMessageModal(message.id));
+                messageItem.querySelector('.admin-action-btn.message').addEventListener('click', () => showSendMessageModal(message.from_user_id, message.from_username || getText('admin.unknownUser')));
             });
-          } catch (error) {
-            console.error("Error getting user data for message:", error);
-            adminMessages.push({
-              id: docSnapshot.id,
-              ...messageData,
-              userName: getText('admin.unknownUser')
-            });
-          }
         } else {
-          adminMessages.push({
-            id: docSnapshot.id,
-            ...messageData
-          });
+            adminNoMessages.style.display = 'block';
+            adminMessagesList.innerHTML = '';
         }
-      }
-  console.log('Paso 3: Mensajes procesados. Total:', adminMessages.length);
-
-  if (adminMessages.length > 0) {
-        adminNoMessages.style.display = 'none';
-        adminMessagesList.innerHTML = '';
-
-        adminMessages.forEach(message => {
-          const messageDate = message.date instanceof Date
-            ? message.date
-            : message.date?.toDate?.() || new Date();
-
-          const messageItem = document.createElement('div');
-          messageItem.className = 'message-item';
-
-          messageItem.innerHTML = `
-            <div class="message-header">
-              <span class="message-sender">${getText('admin.fromLabel')} ${message.userName || getText('admin.user')}</span>
-              <span class="message-date">${messageDate.toLocaleString()}</span>
-            </div>
-            <div class="message-content">${message.content}</div>
-            <div class="message-actions">
-              <button class="message-delete-btn" data-id="${message.id}">
-                <i class="fas fa-trash"></i>
-              </button>
-              <button class="admin-action-btn message" data-id="${message.from}" data-name="${message.userName || getText('admin.user')}" style="margin-left: 10px; background-color: var(--accent-color); color: white; border-radius: 4px; padding: 4px 8px; font-size: 0.8rem;">
-                <i class="fas fa-reply"></i> ${getText('actions.reply')}
-              </button>
-            </div>
-          `;
-
-          adminMessagesList.appendChild(messageItem);
-
-          const deleteBtn = messageItem.querySelector('.message-delete-btn');
-          deleteBtn.addEventListener('click', () => {
-            showDeleteMessageModal(message.id);
-          });
-
-          const replyBtn = messageItem.querySelector('.admin-action-btn.message');
-          replyBtn.addEventListener('click', () => {
-            showSendMessageModal(message.from, message.userName || getText('admin.user'));
-          });
-        });
-  } else {
-    console.log('Paso 4: No hay mensajes para renderizar.');
-    adminNoMessages.style.display = 'block';
-    adminMessagesList.innerHTML = '';
-  }
-    }, (error) => {
-      console.error("Error loading admin messages:", error);
-      adminNoMessages.style.display = 'none';
-      adminMessagesList.innerHTML = `
-        <div class="empty-state">
-          <i class="fas fa-exclamation-circle empty-icon"></i>
-          <h3 class="empty-title">${getText('user.messages.loadError')}</h3>
-          <p class="empty-text">${getText('user.messages.loadError')}</p>
-        </div>
-      `;
-    });
-
-    // Guardar referencia al listener para limpiarlo después
-    messageListeners['admin'] = unsubscribe;
-
-  } catch (error) {
-    console.error("Error setting up admin message listener:", error);
-    adminNoMessages.style.display = 'none';
-    adminMessagesList.innerHTML = `
-        <div class="empty-state">
-          <i class="fas fa-exclamation-circle empty-icon"></i>
-          <h3 class="empty-title">${getText('user.messages.loadError')}</h3>
-          <p class="empty-text">${getText('user.messages.loadError')}</p>
-        </div>
-      `;
-  }
+    } catch (error) {
+        console.error("Error loading admin messages:", error);
+        adminMessagesList.innerHTML = `<div class="empty-state error">${getText('user.messages.loadError')}</div>`;
+    }
 }
 
 ;(() => {
@@ -3121,56 +2781,57 @@ const unsubscribe = onSnapshot(messagesQuery, async (snapshot) => {
 })()
 
 async function showEditUserModal(userId) {
-  try {
-    // Get user data from Firestore
-    const userDoc = await getDoc(doc(db, "users", userId));
+    try {
+        const response = await fetch(`api/users.php?action=get_user&id=${userId}`);
+        const data = await response.json();
 
-    if (userDoc.exists()) {
-      const userData = userDoc.data();
+        if (data.success) {
+            const user = data.user;
+            editName.value = user.username;
+            editEmail.value = user.email;
+            editUserId.value = user.id;
 
-      editName.value = userData.name;
-      editEmail.value = userData.email;
-      editUserId.value = userId;
-
-      editUserModal.style.display = 'block';
+            editUserModal.style.display = 'block';
+        } else {
+            showMessageModal(getText('modal.errorTitle'), data.message || getText('modal.loadUserError'), 'error');
+        }
+    } catch (error) {
+        console.error("Error getting user data for edit:", error);
+        showMessageModal(getText('modal.errorTitle'), getText('modal.loadUserError'), 'error');
     }
-  } catch (error) {
-    console.error("Error getting user data for edit:", error);
-    showMessageModal(getText('modal.errorTitle'), getText('modal.loadUserError'), 'error');
-  }
 }
 
 // Handle save user edit
 async function handleSaveUserEdit() {
-  const userId = editUserId.value;
-  const name = editName.value.trim();
-  const email = editEmail.value.trim();
+    const userId = editUserId.value;
+    const name = editName.value.trim();
+    const email = editEmail.value.trim();
 
-  // Validate form
-  if (!name || !email) {
-    showMessageModal(getText('modal.validationErrorTitle'), getText('modal.validationErrorText'), 'error');
-    return;
-  }
+    if (!name || !email) {
+        showMessageModal(getText('modal.validationErrorTitle'), getText('modal.validationErrorText'), 'error');
+        return;
+    }
 
-  try {
-    // Update user in Firestore
-    await updateDoc(doc(db, "users", userId), {
-      name: name,
-      email: email
-    });
+    try {
+        const response = await fetch('api/users.php?action=update_user', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: userId, name: name, email: email })
+        });
+        const data = await response.json();
 
-    // Close modal
-    editUserModal.style.display = 'none';
-
-    allAdminUsers = [];
-    loadUsers();
-
-    // Show success message
-    showMessageModal(getText('modal.updateSuccessTitle'), getText('modal.updateSuccessText'), 'success');
-  } catch (error) {
-    console.error("Error updating user:", error);
-    showMessageModal(getText('modal.updateErrorTitle'), getText('modal.updateErrorText'), 'error');
-  }
+        if (data.success) {
+            editUserModal.style.display = 'none';
+            allAdminUsers = []; // Force a reload from the database
+            loadUsers();
+            showMessageModal(getText('modal.updateSuccessTitle'), getText('modal.updateSuccessText'), 'success');
+        } else {
+            showMessageModal(getText('modal.updateErrorTitle'), data.message || getText('modal.updateErrorText'), 'error');
+        }
+    } catch (error) {
+        console.error("Error updating user:", error);
+        showMessageModal(getText('modal.updateErrorTitle'), getText('modal.updateErrorText'), 'error');
+    }
 }
 
 function showSendMessageModal(userId, userName) {
@@ -3182,93 +2843,76 @@ function showSendMessageModal(userId, userName) {
 }
 
 async function handleSendIndividualMessage() {
-  const userId = messageUserId.value;
-  const content = individualMessageContent.value.trim();
+    const userId = messageUserId.value;
+    const content = individualMessageContent.value.trim();
 
-  // Validate form
-  if (!content) {
-    showMessageModal(getText('user.messages.sendError.noMessage'), getText('user.messages.sendError.noMessage'), 'error');
-    return;
-  }
+    if (!content) {
+        showMessageModal(getText('user.messages.sendError.noMessage'), getText('user.messages.sendError.noMessage'), 'error');
+        return;
+    }
 
-  try {
-    // Mostrar indicador de carga
     sendMessage.textContent = getText('user.messages.sending');
     sendMessage.disabled = true;
 
-    // Add message to Firestore
-    await addDoc(collection(db, "messages"), {
-      from: 'admin',
-      to: userId,
-      content: content,
-      date: serverTimestamp(),
-      read: false
-    });
+    try {
+        const response = await fetch('api/messages.php?action=send_admin_message', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ recipient: userId, content: content })
+        });
+        const data = await response.json();
 
-    // Close modal
-    sendMessageModal.style.display = 'none';
-
-    // Reset button state
-    sendMessage.textContent = getText('modal.sendButton');
-    sendMessage.disabled = false;
-
-    // Show success message
-    showMessageModal(getText('user.messages.sendSuccess'), getText('user.messages.sendSuccess'), 'success');
-  } catch (error) {
-    console.error("Error sending message:", error);
-    showMessageModal(getText('user.messages.sendError.general'), getText('user.messages.sendError.general'), 'error');
-
-    // Reset button state
-    sendMessage.textContent = getText('modal.sendButton');
-    sendMessage.disabled = false;
-  }
+        if (data.success) {
+            sendMessageModal.style.display = 'none';
+            showMessageModal(getText('user.messages.sendSuccess'), getText('user.messages.sendSuccess'), 'success');
+        } else {
+            showMessageModal(getText('user.messages.sendError.general'), data.message || getText('user.messages.sendError.general'), 'error');
+        }
+    } catch (error) {
+        console.error("Error sending message:", error);
+        showMessageModal(getText('user.messages.sendError.general'), getText('user.messages.sendError.general'), 'error');
+    } finally {
+        sendMessage.textContent = getText('modal.sendButton');
+        sendMessage.disabled = false;
+    }
 }
 
 async function handleSendAdminMessage(e) {
-  e.preventDefault();
+    e.preventDefault();
 
-  const recipient = messageRecipient.value;
-  const content = messageContent.value.trim();
+    const recipient = messageRecipient.value;
+    const content = messageContent.value.trim();
 
-  // Validate form
-  if (!content) {
-    showMessageModal(getText('user.messages.sendError.noMessage'), getText('user.messages.sendError.noMessage'), 'error');
-    return;
-  }
+    if (!content) {
+        showMessageModal(getText('user.messages.sendError.noMessage'), getText('user.messages.sendError.noMessage'), 'error');
+        return;
+    }
 
-  try {
-    // Mostrar indicador de carga
     const submitBtn = adminMessageForm.querySelector('button[type="submit"]');
     submitBtn.textContent = getText('user.messages.sending');
     submitBtn.disabled = true;
 
-    // Add message to Firestore
-    await addDoc(collection(db, "messages"), {
-      from: 'admin',
-      to: recipient,
-      content: content,
-      date: serverTimestamp(),
-      read: false
-    });
+    try {
+        const response = await fetch('api/messages.php?action=send_admin_message', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ recipient: recipient, content: content })
+        });
+        const data = await response.json();
 
-    // Reset form
-    adminMessageForm.reset();
-
-    // Restaurar botón
-    submitBtn.textContent = getText('admin.sendMessageButton');
-    submitBtn.disabled = false;
-
-    // Show success message
-    showMessageModal(getText('user.messages.sendSuccess'), getText('user.messages.sendSuccess'), 'success');
-  } catch (error) {
-    console.error("Error sending message:", error);
-    showMessageModal(getText('user.messages.sendError.general'), getText('user.messages.sendError.general'), 'error');
-
-    // Restaurar botón
-    const submitBtn = adminMessageForm.querySelector('button[type="submit"]');
-    submitBtn.textContent = getText('admin.sendMessageButton');
-    submitBtn.disabled = false;
-  }
+        if (data.success) {
+            adminMessageForm.reset();
+            showMessageModal(getText('user.messages.sendSuccess'), getText('user.messages.sendSuccess'), 'success');
+        } else {
+            showMessageModal(getText('user.messages.sendError.general'), data.message || getText('user.messages.sendError.general'), 'error');
+        }
+    } catch (error) {
+        console.error("Error sending message:", error);
+        showMessageModal(getText('user.messages.sendError.general'), getText('user.messages.sendError.general'), 'error');
+    } finally {
+        submitBtn.textContent = getText('admin.sendMessageButton');
+        submitBtn.disabled = false;
+    }
 }
 
 function showDeleteConfirmationModal(userId) {
@@ -3278,97 +2922,30 @@ function showDeleteConfirmationModal(userId) {
 
 // Handle delete user
 async function handleDeleteUser() {
-  const userId = deleteUserId.value;
+    const userId = deleteUserId.value;
 
-  try {
-    // Delete user from Firestore
-    await deleteDoc(doc(db, "users", userId));
+    try {
+        const response = await fetch('api/users.php?action=delete_user', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: userId })
+        });
+        const data = await response.json();
 
-    // Close modal
-    deleteConfirmationModal.style.display = 'none';
-
-    allAdminUsers = [];
-    loadUsers();
-
-    // Show success message
-    showMessageModal(getText('modal.deleteUserSuccessTitle'), getText('modal.deleteUserSuccessText'), 'success');
-  } catch (error) {
-    console.error("Error deleting user:", error);
-    showMessageModal(getText('modal.deleteErrorTitle'), getText('modal.deleteErrorText'), 'error');
-  }
+        if (data.success) {
+            deleteConfirmationModal.style.display = 'none';
+            allAdminUsers = []; // Force a reload
+            loadUsers();
+            showMessageModal(getText('modal.deleteUserSuccessTitle'), getText('modal.deleteUserSuccessText'), 'success');
+        } else {
+            showMessageModal(getText('modal.deleteErrorTitle'), data.message || getText('modal.deleteErrorText'), 'error');
+        }
+    } catch (error) {
+        console.error("Error deleting user:", error);
+        showMessageModal(getText('modal.deleteErrorTitle'), getText('modal.deleteErrorText'), 'error');
+    }
 }
 
-async function loadConnectedUsers() {
-  showSpinner();
-  try {
-    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000); // Last 5 minutes
-    const q = query(
-      collection(db, "users"),
-      where("lastActivity", ">=", fiveMinutesAgo),
-      orderBy("lastActivity", "desc")
-    );
-    const querySnapshot = await getDocs(q);
-    const connectedUsers = [];
-    querySnapshot.forEach((doc) => {
-      connectedUsers.push({ id: doc.id, ...doc.data() });
-    });
-    renderConnectedUsersGrid(connectedUsers);
-  } catch (error) {
-    console.error("Error loading connected users:", error);
-    connectedUsersGrid.innerHTML = `
-      <div class="empty-state" style="grid-column: 1 / -1;">
-        <i class="fas fa-exclamation-circle empty-icon"></i>
-        <h3 class="empty-title">${getText('connectedUsers.loadError.title')}</h3>
-        <p class="empty-text">${getText('connectedUsers.loadError.text')}</p>
-      </div>
-    `;
-  } finally {
-    hideSpinner();
-  }
-}
-
-function renderConnectedUsersGrid(users) {
-  connectedUsersGrid.innerHTML = '';
-
-  if (users.length === 0) {
-    connectedUsersGrid.innerHTML = `
-      <div class="empty-state" style="grid-column: 1 / -1;">
-        <i class="fas fa-users-slash empty-icon"></i>
-        <h3 class="empty-title">${getText('connectedUsers.empty.title')}</h3>
-        <p class="empty-text">${getText('connectedUsers.empty.text')}</p>
-      </div>
-    `;
-    return;
-  }
-
-  users.forEach(user => {
-    const lastActivityDate = user.lastActivity instanceof Date
-      ? user.lastActivity
-      : user.lastActivity?.toDate?.() || null;
-
-    const lastActivityText = lastActivityDate
-      ? `${getText('admin.lastActivityLabel')} ${lastActivityDate.toLocaleTimeString()}`
-      : `${getText('admin.lastActivityLabel')} ${getText('admin.notAvailable')}`;
-
-    const userCard = document.createElement('div');
-    userCard.className = 'user-card'; // Reutiliza la clase user-card para el estilo
-
-    userCard.innerHTML = `
-      <div class="user-card-header">
-        <div class="user-card-avatar">${user.name.charAt(0).toUpperCase()}</div>
-        <div class="user-card-info">
-          <h4>${user.name}</h4>
-          <p>${user.email}</p>
-        </div>
-      </div>
-      <div class="user-card-body">
-        <p><strong>${getText('admin.statusLabel')}</strong> <span style="color: var(--success-color); font-weight: bold;">${getText('admin.statusConnected')}</span></p>
-        <p>${lastActivityText}</p>
-      </div>
-    `;
-    connectedUsersGrid.appendChild(userCard);
-  });
-}
 
 
 // Reset services function
@@ -3588,8 +3165,8 @@ async function loadAllContent() {
         // Show a loading indicator since this is a critical initial load
         showSpinner();
 
-        // Fetch all content from Firestore and cache it
-        allContent = await fetchContentFromFirestore();
+        // Fetch all content from the database and cache it
+        allContent = await fetchContentFromDatabase();
         
         // Populate movies and series content from the cached allContent
         moviesContent = allContent.filter(item => item.media_type === 'movie');
@@ -3615,42 +3192,16 @@ async function loadAllContent() {
     }
 }
 
-async function fetchContentFromFirestore(filterOptions = {}) {
-    const {
-        mediaType,
-        limitNumber,
-        orderByField = 'imported_at',
-        orderByDirection = 'desc',
-        arrayContains
-    } = filterOptions;
-
+async function fetchContentFromDatabase() {
     try {
-        let q = collection(db, 'content');
-        const constraints = [];
-
-        if (mediaType) {
-            constraints.push(where('media_type', '==', mediaType));
+        const response = await fetch('api/content.php?action=get_all');
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
         }
-
-        if (arrayContains && arrayContains.field && arrayContains.value) {
-            constraints.push(where(arrayContains.field, 'array-contains', arrayContains.value));
-        }
-
-        constraints.push(orderBy(orderByField, orderByDirection));
-
-        if (limitNumber) {
-            constraints.push(limit(limitNumber));
-        }
-
-        const finalQuery = query(q, ...constraints);
-        const snapshot = await getDocs(finalQuery);
-        return snapshot.docs.map(doc => doc.data());
-
+        const data = await response.json();
+        return data;
     } catch (error) {
-        console.error("Error fetching content from Firestore:", error);
-        if (error.code === 'failed-precondition') {
-            console.error("This error may be caused by a missing composite index in Firestore. Please check the Firebase console to create the required index based on the error message.");
-        }
+        console.error("Error fetching content from database:", error);
         return [];
     }
 }
@@ -3673,7 +3224,7 @@ async function loadDeferredContent() {
         
         // "Trending" (Top 10) - This section remains fixed to 10
         if (currentUser) {
-            const trending = await fetchTrendingPostersFromFirebase();
+            const trending = await fetchTrendingPosters();
             await renderContentSlider(trendingSlider, trending);
         } else {
             const randomTop10 = shuffleArray(allContent).slice(0, 10);
@@ -4495,90 +4046,69 @@ async function handleCategoryClick(e) {
   }
 
 async function removeFromMyList(itemId) {
-  if (!currentUser) return;
-  
-  try {
-    const userDoc = await getDoc(doc(db, "users", currentUser.id));
-    
-    if (userDoc.exists()) {
-      const userData = userDoc.data();
-      let myList = userData.myList || [];
-      
-      myList = myList.filter(item => item.id !== itemId);
-      
-      await updateDoc(doc(db, "users", currentUser.id), {
-        myList: myList
-      });
-     
+    if (!currentUser) return;
+
+    try {
+        await fetch('api/users.php?action=remove_from_my_list', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content_id: itemId })
+        });
+        // You might want to refresh the list view after removing an item
+    } catch (error) {
+        console.error("Error removing from my list:", error);
+        showToast(getText('toast.removeFromListError'), 'error');
     }
-  } catch (error) {
-    console.error("Error removing from my list:", error);
-    showToast(getText('toast.removeFromListError'), 'error');
-  }
 }
 
 async function saveToMyList(item, btnElement = null) {
-  if (!currentUser) {
-    showAuthModal();
-    return;
-  }
+    if (!currentUser) {
+        showAuthModal();
+        return;
+    }
 
-  const originalBtnHtml = btnElement ? btnElement.innerHTML : '';
-  if (btnElement) {
-    btnElement.disabled = true;
-    btnElement.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${getText('actions.saving')}`;
-  }
+    const originalBtnHtml = btnElement ? btnElement.innerHTML : '';
+    if (btnElement) {
+        btnElement.disabled = true;
+        btnElement.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${getText('actions.saving')}`;
+    }
 
-  try {
-    await updatePosterClickCount(item.id, item.media_type, item.title || item.name, item.poster_path, item.vote_average);
-
-    const userRef = doc(db, "users", currentUser.id);
-    const userDoc = await getDoc(userRef);
-
-    if (userDoc.exists()) {
-      const userData = userDoc.data();
-      let myList = userData.myList || [];
-      const existingIndex = myList.findIndex(content => content.id === item.id && content.media_type === item.media_type);
-
-      if (existingIndex === -1) {
-        myList.push({
-          id: item.id,
-          media_type: item.media_type,
-          title: item.title || item.name,
-          poster_path: item.poster_path,
-          release_date: item.release_date || item.first_air_date,
-          vote_average: item.vote_average,
-          lastVisited: new Date().toISOString()
+    try {
+        const response = await fetch('api/users.php?action=add_to_my_list', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content_id: item.id })
         });
-        await updateDoc(userRef, { myList: myList });
-        if (btnElement) {
-          btnElement.innerHTML = `<i class="fas fa-check"></i> ${getText('actions.added')}`;
+        const data = await response.json();
+
+        if (data.success) {
+            if (btnElement) {
+                btnElement.innerHTML = `<i class="fas fa-check"></i> ${getText('actions.added')}`;
+            } else {
+                showToast(getText('toast.addedToList'), 'success');
+            }
         } else {
-          showToast(getText('toast.addedToList'), 'success');
+             if (btnElement) {
+                btnElement.innerHTML = `<i class="fas fa-info-circle"></i> ${getText('actions.alreadyInList')}`;
+            } else {
+                showToast(getText('toast.alreadyInList'), 'info');
+            }
         }
-      } else {
+    } catch (error) {
+        console.error("Error saving to my list:", error);
         if (btnElement) {
-          btnElement.innerHTML = `<i class="fas fa-info-circle"></i> ${getText('actions.alreadyInList')}`;
+            btnElement.innerHTML = `<i class="fas fa-times"></i> ${getText('actions.error')}`;
         } else {
-          showToast(getText('toast.alreadyInList'), 'info');
+            showToast(getText('toast.addToListError'), 'error');
         }
-      }
+    } finally {
+        if (btnElement) {
+            setTimeout(() => {
+                btnElement.disabled = false;
+                btnElement.innerHTML = originalBtnHtml;
+            }, 2500); // Revert button after 2.5 seconds
+        }
     }
-  } catch (error) {
-    console.error("Error saving to my list:", error);
-    if (btnElement) {
-      btnElement.innerHTML = `<i class="fas fa-times"></i> ${getText('actions.error')}`;
-    } else {
-      showToast(getText('toast.addToListError'), 'error');
-    }
-  } finally {
-    if (btnElement) {
-      setTimeout(() => {
-        btnElement.disabled = false;
-        btnElement.innerHTML = originalBtnHtml;
-      }, 2500); // Revert button after 2.5 seconds
-    }
-  }
 }
 
   function showSpinner() {
@@ -4589,57 +4119,29 @@ async function saveToMyList(item, btnElement = null) {
     spinnerContainer.style.display = 'none';
   }
 
-  async function updatePosterClickCount(posterId, mediaType, title, posterPath, voteAverage) {
+async function updatePosterClickCount(posterId) {
     try {
-      const posterRef = doc(db, "posterClicks", String(posterId));
-      const posterDoc = await getDoc(posterRef);
-
-      if (posterDoc.exists()) {
-        // If poster exists, increment clickCount
-        await updateDoc(posterRef, {
-          clickCount: posterDoc.data().clickCount + 1,
-          lastClicked: serverTimestamp(),
-          mediaType: mediaType,
-          title: title,
-          posterPath: posterPath,
-          vote_average: voteAverage
+        await fetch('api/stats.php?action=update_click_count', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content_id: posterId })
         });
-      } else {
-        // If poster does not exist, create it with clickCount = 1
-        await setDoc(posterRef, {
-          posterId: String(posterId), // Store as string
-          mediaType: mediaType,
-          title: title,
-          posterPath: posterPath,
-          vote_average: voteAverage,
-          clickCount: 1,
-          lastClicked: serverTimestamp()
-        });
-      }
     } catch (error) {
-      console.error("Error updating poster click count:", error);
+        console.error("Error updating poster click count:", error);
     }
-  }
+}
 
-  async function fetchTrendingPostersFromFirebase() {
+async function fetchTrendingPosters() {
     try {
-      const q = query(
-        collection(db, "posterClicks"),
-        orderBy("clickCount", "desc"),
-        limit(10)
-      );
-      const querySnapshot = await getDocs(q);
-      const trendingData = [];
-      querySnapshot.forEach((doc) => {
-        trendingData.push(doc.data());
-      });
-      trendingContent = trendingData; 
-      return trendingData;
+        const response = await fetch('api/stats.php?action=get_trending');
+        const trendingData = await response.json();
+        trendingContent = trendingData;
+        return trendingData;
     } catch (error) {
-      console.error("Error fetching trending posters from Firebase:", error);
-      return [];
+        console.error("Error fetching trending posters:", error);
+        return [];
     }
-  }
+}
 
 async function fetchContentByIds(ids, type) {
   if (!ids || ids.length === 0) return [];
@@ -4974,7 +4476,7 @@ async function showMovieDetailsModal(id, type, pushState = true) {
             if (!contentDoc.exists()) throw new Error(getText('modal.contentNotFound'));
             
             const data = contentDoc.data();
-            await updatePosterClickCount(data.id, type, data.title || data.name, data.poster_path, data.vote_average);
+            await updatePosterClickCount(data.id);
             await renderModalContent(data, type);
         } else {
             const data = await response.json();
@@ -4983,7 +4485,7 @@ async function showMovieDetailsModal(id, type, pushState = true) {
                 // Use hash-based navigation
                 history.pushState({ id: data.id, type: type, slug: slug }, '', `#${slug}`);
             }
-            await updatePosterClickCount(data.id, type, data.title || data.name, data.poster_path, data.vote_average);
+            await updatePosterClickCount(data.id);
             await renderModalContent(data, type);
         }
     } catch (error) {
@@ -5780,26 +5282,21 @@ function showDeleteContentConfirmationModal(contentId) {
 }
 
 async function loadWebSettings() {
-  try {
-    const settingsRef = doc(db, "web_config", "settings");
-    const settingsDoc = await getDoc(settingsRef);
-    if (settingsDoc.exists()) {
-      const fetchedSettings = settingsDoc.data();
-      // Deep merge with defaults to avoid losing nested properties
-      webSettings = {
-        ...webSettings,
-        ...fetchedSettings,
-        heroSlider: { ...webSettings.heroSlider, ...fetchedSettings.heroSlider },
-        homepageSections: { ...webSettings.homepageSections, ...fetchedSettings.homepageSections },
-      };
-      console.log("Web settings loaded from Firestore.");
-    } else {
-      console.log("No web settings found in Firestore, using defaults and saving them.");
-      await setDoc(settingsRef, webSettings);
+    try {
+        const response = await fetch('api/settings.php?action=get_settings');
+        const fetchedSettings = await response.json();
+
+        // Deep merge with defaults to avoid losing nested properties
+        webSettings = {
+            ...webSettings,
+            ...fetchedSettings,
+            heroSlider: { ...webSettings.heroSlider, ...fetchedSettings.heroSlider },
+            homepageSections: { ...webSettings.homepageSections, ...fetchedSettings.homepageSections },
+        };
+        console.log("Web settings loaded from database.");
+    } catch (error) {
+        console.error("Error loading web settings, using defaults:", error);
     }
-  } catch (error) {
-    console.error("Error loading web settings, using defaults:", error);
-  }
 }
 
 function populateSettingsForm() {
@@ -5849,47 +5346,54 @@ function populateSettingsForm() {
 }
 
 async function saveWebSettings(e) {
-  e.preventDefault();
-  if (!isAdmin) return;
+    e.preventDefault();
+    if (!isAdmin) return;
 
-  showSpinner();
-  try {
-    const newSettings = {
-      importLanguage: importLanguageSelect.value,
-      displayLanguage: displayLanguageSelect.value,
-      heroSlider: {
-        posters: parseInt(heroSliderPostersInput.value),
-        random: parseInt(heroSliderRandomInput.value),
-        recent: parseInt(heroSliderRecentInput.value),
-      },
-      visibleCategories: Array.from(document.querySelectorAll('input[name="visible-category"]:checked')).map(cb => cb.value),
-      visiblePlatforms: Array.from(document.querySelectorAll('input[name="visible-platform"]:checked')).map(cb => cb.value),
-      homepageSections: {
-        enEstreno: parseInt(postersEnEstrenoInput.value),
-        recienAgregado: parseInt(postersRecienAgregadoInput.value),
-        peliculasPopulares: parseInt(postersPeliculasPopularesInput.value),
-        seriesPopulares: parseInt(postersSeriesPopularesInput.value),
-      }
-    };
+    showSpinner();
+    try {
+        const newSettings = {
+            importLanguage: importLanguageSelect.value,
+            displayLanguage: displayLanguageSelect.value,
+            heroSlider: {
+                posters: parseInt(heroSliderPostersInput.value),
+                random: parseInt(heroSliderRandomInput.value),
+                recent: parseInt(heroSliderRecentInput.value),
+            },
+            visibleCategories: Array.from(document.querySelectorAll('input[name="visible-category"]:checked')).map(cb => cb.value),
+            visiblePlatforms: Array.from(document.querySelectorAll('input[name="visible-platform"]:checked')).map(cb => cb.value),
+            homepageSections: {
+                enEstreno: parseInt(postersEnEstrenoInput.value),
+                recienAgregado: parseInt(postersRecienAgregadoInput.value),
+                peliculasPopulares: parseInt(postersPeliculasPopularesInput.value),
+                seriesPopulares: parseInt(postersSeriesPopularesInput.value),
+            }
+        };
 
-    const settingsRef = doc(db, "web_config", "settings");
-    await setDoc(settingsRef, newSettings);
-    
-    webSettings = newSettings; // Update global object
-    
-    // Apply changes dynamically without reloading
-    await loadAllContent();
-    applyStaticTranslations();
-    updateUIForLoggedInUser(); // To update dropdown text language if changed
+        const response = await fetch('api/settings.php?action=save_settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(newSettings)
+        });
+        const data = await response.json();
 
-    showMessageModal(getText('settings.saveSuccess'), getText('settings.saveSuccess'), 'success');
+        if (data.success) {
+            webSettings = newSettings; // Update global object
 
-  } catch (error) {
-    console.error("Error saving web settings:", error);
-    showMessageModal(getText('settings.saveError'), getText('settings.saveError'), 'error');
-  } finally {
-    hideSpinner();
-  }
+            // Apply changes dynamically without reloading
+            await loadAllContent();
+            applyStaticTranslations();
+            updateUIForLoggedInUser(); // To update dropdown text language if changed
+
+            showMessageModal(getText('settings.saveSuccess'), getText('settings.saveSuccess'), 'success');
+        } else {
+            showMessageModal(getText('settings.saveError'), data.message || getText('settings.saveError'), 'error');
+        }
+    } catch (error) {
+        console.error("Error saving web settings:", error);
+        showMessageModal(getText('settings.saveError'), getText('settings.saveError'), 'error');
+    } finally {
+        hideSpinner();
+    }
 }
 
 async function handleDeleteContent() {
