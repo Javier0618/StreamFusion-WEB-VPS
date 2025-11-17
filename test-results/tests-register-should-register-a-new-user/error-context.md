@@ -1,0 +1,107 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - img "StreamFusion Logo"
+      - heading "StreamFusion" [level=1] [ref=e6]
+    - navigation "Navegación principal" [ref=e7]:
+      - link "Inicio" [ref=e8] [cursor=pointer]:
+        - /url: "#"
+      - link "Películas" [ref=e9] [cursor=pointer]:
+        - /url: "#"
+      - link "Series" [ref=e10] [cursor=pointer]:
+        - /url: "#"
+      - link "Animes" [ref=e11] [cursor=pointer]:
+        - /url: "#"
+      - link "Doramas" [ref=e12] [cursor=pointer]:
+        - /url: "#"
+      - link "TV" [ref=e13] [cursor=pointer]:
+        - /url: go:TV
+    - generic [ref=e14]:
+      - generic [ref=e15]:
+        - textbox "Buscar títulos..." [ref=e16]
+        - button "" [ref=e17] [cursor=pointer]:
+          - generic [ref=e18]: 
+      - generic [ref=e21] [cursor=pointer]: 
+  - generic [ref=e23]:
+    - region "Contenido destacado" [ref=e24]
+    - main [ref=e25]:
+      - region "Plataformas de streaming" [ref=e26]:
+        - button
+        - generic [ref=e27]:
+          - img "Netflix"
+        - generic [ref=e28]:
+          - img "Disney+"
+        - generic [ref=e29]:
+          - img "HBO Max"
+        - generic [ref=e30]:
+          - img "Prime Video"
+        - generic [ref=e31]:
+          - img "Paramount+"
+      - region "Categorías de contenido" [ref=e32]:
+        - heading "Explorar por Categoría" [level=2] [ref=e33]
+      - region "En Estreno/Emisión" [ref=e35]:
+        - generic [ref=e36]:
+          - heading "En Estreno/Emisión" [level=2] [ref=e37]
+          - link "Ver todo el contenido en estreno":
+            - /url: "#"
+        - generic:
+          - generic:
+            - button "Anterior" [ref=e38] [cursor=pointer]:
+              - generic [ref=e39]: 
+            - button "Siguiente" [ref=e40] [cursor=pointer]:
+              - generic [ref=e41]: 
+      - region "Recién Agregado" [ref=e42]:
+        - heading "Recién Agregado" [level=2] [ref=e44]
+        - generic:
+          - generic:
+            - button "Anterior" [ref=e45] [cursor=pointer]:
+              - generic [ref=e46]: 
+            - button "Siguiente" [ref=e47] [cursor=pointer]:
+              - generic [ref=e48]: 
+      - region "TOP 10 más vistos" [ref=e49]:
+        - heading "TOP 10 más vistos" [level=2] [ref=e51]
+        - generic:
+          - generic:
+            - button "Anterior" [ref=e52] [cursor=pointer]:
+              - generic [ref=e53]: 
+            - button "Siguiente" [ref=e54] [cursor=pointer]:
+              - generic [ref=e55]: 
+      - region "Películas populares" [ref=e56]:
+        - generic [ref=e57]:
+          - heading "Películas populares" [level=2] [ref=e58]
+          - link "Ver todas las películas" [ref=e59] [cursor=pointer]:
+            - /url: "#"
+            - text: Ver todo
+            - generic [ref=e60]: 
+        - generic:
+          - generic:
+            - button "Anterior" [ref=e61] [cursor=pointer]:
+              - generic [ref=e62]: 
+            - button "Siguiente" [ref=e63] [cursor=pointer]:
+              - generic [ref=e64]: 
+      - region "Series populares" [ref=e65]:
+        - generic [ref=e66]:
+          - heading "Series populares" [level=2] [ref=e67]
+          - link "Ver todas las series" [ref=e68] [cursor=pointer]:
+            - /url: "#"
+            - text: Ver todo
+            - generic [ref=e69]: 
+        - generic:
+          - generic:
+            - button "Anterior" [ref=e70] [cursor=pointer]:
+              - generic [ref=e71]: 
+            - button "Siguiente" [ref=e72] [cursor=pointer]:
+              - generic [ref=e73]: 
+  - text:                    
+  - button "" [ref=e74] [cursor=pointer]:
+    - generic [ref=e75]: 
+  - text:        
+  - generic [ref=e77] [cursor=pointer]: 
+  - text:    A 
+  - contentinfo [ref=e78]:
+    - paragraph [ref=e79]: © 2025 STREAMFUSION. Reservados todos los derechos.
+    - paragraph [ref=e80]: Este sitio no almacena ningún archivo en su servidor. Todo el contenido es proporcionado por terceros no afiliados.
+```

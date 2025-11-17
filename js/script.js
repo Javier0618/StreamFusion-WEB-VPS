@@ -1,16 +1,5 @@
-// Import Firebase modules 
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-app.js";
-import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-analytics.js";
-import { firebaseConfig, API_KEY, ADMIN_EMAIL } from './config.js';
-import { GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-auth.js";
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-auth.js";
-import { getFirestore, collection, addDoc, getDocs, getDoc, doc, setDoc, updateDoc, query, where, orderBy, limit, serverTimestamp, onSnapshot, writeBatch, deleteDoc } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-firestore.js"; // Añadido deleteDoc
+import { API_BASE_URL } from './config.js';
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
-const auth = getAuth(app);
-const db = getFirestore(app);
 const apiCache = new Map();
 
 const translations = {
@@ -1051,48 +1040,38 @@ function createSlug(title) {
 }
 
 // Initialize authentication
-function initAuth() {
-  onAuthStateChanged(auth, async (user) => {
-    if (user) {
-      hideAuthModal();
-      try {
-        const userDoc = await getDoc(doc(db, "users", user.uid));
-        if (userDoc.exists()) {
-          currentUser = { id: user.uid, ...userDoc.data() };
-        } else {
-          const newUser = {
-            name: user.displayName || user.email.split('@')[0],
-            email: user.email,
-            registeredAt: serverTimestamp(),
-            myList: [],
-            messagesSent: [],
-            lastActivity: serverTimestamp(),
-            isAdmin: user.email === ADMIN_EMAIL,
-          };
-          await setDoc(doc(db, "users", user.uid), newUser);
-          currentUser = { id: user.uid, ...newUser };
-        }
-        isAdmin = currentUser.email === ADMIN_EMAIL;
-        updateDoc(doc(db, "users", user.uid), { lastActivity: serverTimestamp() });
-      } catch (error) {
-        console.error("Error getting user data:", error);
-      }
-    } else {
-      currentUser = null;
-      isAdmin = false;
-    }
-    updateUIForLoggedInUser();
-    
-    // Load content after user status is known
+async function initAuth() {
+  const token = localStorage.getItem('token');
+  if (token) {
     try {
-      await loadAllContent();
-      handleInitialLoadURL(); // Call this AFTER content is loaded
+      const res = await fetch(`${API_BASE_URL}/me.php`, {
+        headers: {
+          'x-auth-token': token,
+        },
+      });
+      if (res.ok) {
+        currentUser = await res.json();
+        isAdmin = currentUser.isAdmin;
+      } else {
+        localStorage.removeItem('token');
+      }
     } catch (error) {
-      console.error("Failed to load initial content:", error);
+      console.error('Error verifying token:', error);
+      localStorage.removeItem('token');
     }
-  });
+  } else {
+    currentUser = null;
+    isAdmin = false;
+  }
+  updateUIForLoggedInUser();
 
-  // Add event listeners for auth forms
+  try {
+    await loadAllContent();
+    handleInitialLoadURL();
+  } catch (error) {
+    console.error("Failed to load initial content:", error);
+  }
+
   loginForm.addEventListener('submit', handleLogin);
   registerForm.addEventListener('submit', handleRegister);
   showRegister.addEventListener('click', () => {
@@ -1139,24 +1118,33 @@ async function handleLogin(e) {
   const email = loginEmail.value.trim();
   const password = loginPassword.value;
 
-  // Show spinner
   showSpinner();
 
   try {
-    // Sign in with Firebase Auth
-    await signInWithEmailAndPassword(auth, email, password);
+    const res = await fetch(`${API_BASE_URL}/login.php`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, password }),
+    });
 
-    // Clear form
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.error || 'Error al iniciar sesión');
+    }
+
+    localStorage.setItem('token', data.token);
+    await initAuth();
+    hideAuthModal();
     loginForm.reset();
     loginError.style.display = 'none';
-    
   } catch (error) {
-    // Hide spinner
-    hideSpinner();
-
-    // Show error
-    loginError.textContent = getAuthErrorMessage(error.code);
+    loginError.textContent = error.message;
     loginError.style.display = 'block';
+  } finally {
+    hideSpinner();
   }
 }
 
@@ -1169,68 +1157,45 @@ async function handleRegister(e) {
   const password = registerPassword.value;
   const confirmPassword = registerConfirmPassword.value;
 
-  // Validate form
   if (password !== confirmPassword) {
     registerError.textContent = 'Las contraseñas no coinciden';
     registerError.style.display = 'block';
-    registerSuccess.style.display = 'none';
     return;
   }
 
-  // Show spinner
   showSpinner();
 
   try {
-    // Create user with Firebase Auth
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    const user = userCredential.user;
-
-    // Add user data to Firestore
-    await setDoc(doc(db, "users", user.uid), {
-      name: name,
-      email: email,
-      registeredAt: serverTimestamp(),
-      myList: [],
-      messagesSent: [],
-      lastActivity: serverTimestamp(),
-      isAdmin: user.email === ADMIN_EMAIL
+    const res = await fetch(`${API_BASE_URL}/register.php`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ name, email, password }),
     });
 
-    // Show success message
-    registerError.style.display = 'none';
-    registerSuccess.textContent = 'Registro exitoso. Iniciando sesión...';
-    registerSuccess.style.display = 'block';
+    const data = await res.json();
 
-    // Clear form
+    if (!res.ok) {
+      throw new Error(data.error || 'Error al registrarse');
+    }
+
+    localStorage.setItem('token', data.token);
+    await initAuth();
+    hideAuthModal();
     registerForm.reset();
-    
-
+    registerError.style.display = 'none';
   } catch (error) {
-    // Hide spinner
-    hideSpinner();
-
-    // Show error
-    registerError.textContent = getAuthErrorMessage(error.code);
+    registerError.textContent = error.message;
     registerError.style.display = 'block';
-    registerSuccess.style.display = 'none';
+  } finally {
+    hideSpinner();
   }
 }
 
 // Get auth error message
-function getAuthErrorMessage(errorCode) {
-  switch (errorCode) {
-    case 'auth/email-already-in-use':
-      return 'Este correo electrónico ya está registrado';
-    case 'auth/invalid-email':
-      return 'Correo electrónico inválido';
-    case 'auth/weak-password':
-      return 'La contraseña debe tener al menos 6 caracteres';
-    case 'auth/user-not-found':
-    case 'auth/wrong-password':
-      return 'Correo electrónico o contraseña incorrectos';
-    default:
-      return 'Error de autenticación: ' + errorCode;
-  }
+function getAuthErrorMessage(error) {
+  return error;
 }
 
 function updateUIForLoggedInUser() {
@@ -1884,42 +1849,11 @@ function toggleProfileDropdown() {
 })()
 
 async function handleLogout() {
-  try {
-    // Limpiar todos los listeners de mensajes
-    Object.values(messageListeners).forEach(unsubscribe => {
-      if (typeof unsubscribe === 'function') {
-        unsubscribe();
-      }
-    });
-    messageListeners = {};
-
-    // Sign out from Firebase Auth
-    await signOut(auth);
-
-    // Clear current user
-    currentUser = null;
-    isAdmin = false;
-
-    // Update UI for unauthenticated user
-    updateUIForLoggedInUser();
-
-    // Hide all protected views
-    userProfilePage.classList.remove('active');
-    adminPanel.classList.remove('active');
-    statsView.classList.remove('active');
-    connectedUsersView.classList.remove('active');
-    managementPanel.style.display = 'none';
-    loginForm.reset();
-    registerForm.reset();
-    loginError.style.display = 'none';
-    registerError.style.display = 'none';
-    registerSuccess.style.display = 'none';
-
-    // Navigate to home view
-    navigateToView('home');
-  } catch (error) {
-    console.error("Error signing out:", error);
-  }
+  localStorage.removeItem('token');
+  currentUser = null;
+  isAdmin = false;
+  updateUIForLoggedInUser();
+  navigateToView('home');
 }
 
 // Show user profile
@@ -1989,144 +1923,88 @@ function showUserProfile() {
 
 // Load user's my list
 async function loadUserMyList() {
-    if (!currentUser) return;
+  if (!currentUser) return;
 
-    try {
-        const userDoc = await getDoc(doc(db, "users", currentUser.id));
-        if (userDoc.exists() && userDoc.data().myList && userDoc.data().myList.length > 0) {
-            let myList = userDoc.data().myList;
-            myList.sort((a, b) => (b.lastVisited || 0) - (a.lastVisited || 0));
-            
-            // Paginate "My List"
-            await setupContentPagination(myList, profileMyListGrid, document.getElementById('load-more-my-list'));
-        } else {
-            profileMyListGrid.innerHTML = `
-                <div class="empty-state">
-                    <i class="fas fa-list-alt empty-icon"></i>
-                    <h3 class="empty-title">${getText('user.profile.myList.emptyTitle')}</h3>
-                    <p class="empty-text">${getText('user.profile.myList.emptyText')}</p>
-                </div>`;
-            document.getElementById('load-more-my-list').parentElement.style.display = 'none';
-        }
-    } catch (error) {
-        console.error("Error loading user's my list:", error);
-        profileMyListGrid.innerHTML = `<div class="empty-state error">${getText('user.profile.myList.loadError')}</div>`;
+  try {
+    const res = await fetch(`${API_BASE_URL}/my-list.php`, {
+      headers: { 'x-auth-token': localStorage.getItem('token') },
+    });
+    const myList = await res.json();
+    if (myList.length > 0) {
+      await setupContentPagination(myList, profileMyListGrid, document.getElementById('load-more-my-list'));
+    } else {
+      profileMyListGrid.innerHTML = `
+        <div class="empty-state">
+          <i class="fas fa-list-alt empty-icon"></i>
+          <h3 class="empty-title">${getText('user.profile.myList.emptyTitle')}</h3>
+          <p class="empty-text">${getText('user.profile.myList.emptyText')}</p>
+        </div>`;
+      document.getElementById('load-more-my-list').parentElement.style.display = 'none';
     }
+  } catch (error) {
+    console.error("Error loading user's my list:", error);
+    profileMyListGrid.innerHTML = `<div class="empty-state error">${getText('user.profile.myList.loadError')}</div>`;
+  }
 }
 
 
 // Load user's messages with real-time updates
-function loadUserMessages() {
+async function loadUserMessages() {
   if (!currentUser) return;
 
   try {
-    // Limpiar listener anterior si existe
-    if (messageListeners[currentUser.id]) {
-      messageListeners[currentUser.id]();
-    }
-
-    // Mostrar estado de carga
-    messagesList.innerHTML = `
-      <div class="message-item" style="text-align: center;">
-        <div class="spinner" style="width: 30px; height: 30px; margin: 0 auto;"></div>
-        <p style="margin-top: 10px;">${getText('user.messages.loading')}</p>
-      </div>
-    `;
+    messagesList.innerHTML = `<div class="spinner"></div>`;
     noMessages.style.display = 'none';
 
-    const messagesQuery = query(
-      collection(db, "messages"),
-      where("to", "in", [currentUser.id, "all"]),
-      orderBy("date", "desc")
-    );
+    const res = await fetch(`${API_BASE_URL}/messages.php`, {
+      headers: { 'x-auth-token': localStorage.getItem('token') },
+    });
+    const userMessages = await res.json();
 
-    const unsubscribe = onSnapshot(messagesQuery, (snapshot) => {
-      const userMessages = [];
+    if (userMessages.length > 0) {
+      noMessages.style.display = 'none';
+      messagesList.innerHTML = '';
 
-      snapshot.forEach((doc) => {
-        userMessages.push({
-          id: doc.id,
-          ...doc.data()
-        });
+      userMessages.forEach(message => {
+        const messageDate = new Date(message.date);
+        const messageItem = document.createElement('div');
+        messageItem.className = 'message-item';
+        const canDelete = message.from_user === currentUser.id || isAdmin;
+
+        messageItem.innerHTML = `
+          <div class="message-header">
+            <span class="message-sender">${message.from_user === 'admin' ? getText('user.messages.sender.admin') : message.from_user === currentUser.id ? getText('user.messages.sender.you') : getText('user.messages.sender.system')}</span>
+            <span class="message-date">${messageDate.toLocaleString()}</span>
+          </div>
+          <div class="message-content">${message.content}</div>
+          ${canDelete ? `
+            <div class="message-actions">
+              <button class="message-delete-btn" data-id="${message.id}"><i class="fas fa-trash"></i></button>
+            </div>
+          ` : ''}
+        `;
+        messagesList.appendChild(messageItem);
+
+        if (canDelete) {
+          const deleteBtn = messageItem.querySelector('.message-delete-btn');
+          deleteBtn.addEventListener('click', () => {
+            showDeleteMessageModal(message.id);
+          });
+        }
       });
 
-      if (userMessages.length > 0) {
-        noMessages.style.display = 'none';
-        messagesList.innerHTML = '';
-
-        userMessages.forEach(message => {
-          const messageDate = message.date instanceof Date
-            ? message.date
-            : message.date?.toDate?.() || new Date();
-
-          const messageItem = document.createElement('div');
-          messageItem.className = 'message-item';
-
-          const canDelete = (message.from === currentUser.id) || isAdmin;
-
-          messageItem.innerHTML = `
-            <div class="message-header">
-              <span class="message-sender">${message.from === 'admin' ? getText('user.messages.sender.admin') : message.from === currentUser.id ? getText('user.messages.sender.you') : getText('user.messages.sender.system')}</span>
-              <span class="message-date">${messageDate.toLocaleString()}</span>
-            </div>
-            <div class="message-content">${message.content}</div>
-            ${canDelete ? `
-              <div class="message-actions">
-                <button class="message-delete-btn" data-id="${message.id}">
-                  <i class="fas fa-trash"></i>
-                </button>
-              </div>
-            ` : ''}
-          `;
-
-          messagesList.appendChild(messageItem);
-
-          // Agregar event listener al botón de eliminar si existe
-          if (canDelete) {
-            const deleteBtn = messageItem.querySelector('.message-delete-btn');
-            deleteBtn.addEventListener('click', () => {
-              showDeleteMessageModal(message.id);
-            });
-          }
-        });
-
-        const unreadMessages = userMessages.filter(message =>
-          message.from === 'admin' && !message.read
-        );
-        updateNotificationBadge(unreadMessages.length);
-
-      } else {
-        noMessages.style.display = 'block';
-        messagesList.innerHTML = '';
-        updateNotificationBadge(0); // AÑADIR ESTA LÍNEA
-      }
-    }, (error) => {
-      console.error("Error loading user's messages:", error);
-      noMessages.style.display = 'none';
-      messagesList.innerHTML = `
-        <div class="empty-state">
-          <i class="fas fa-exclamation-circle empty-icon"></i>
-          <h3 class="empty-title">${getText('user.messages.loadError')}</h3>
-          <p class="empty-text">${getText('user.messages.loadError')}</p>
-        </div>
-      `;
-      updateNotificationBadge(0); // AÑADIR ESTA LÍNEA
-    });
-
-    // Guardar referencia al listener para limpiarlo después
-    messageListeners[currentUser.id] = unsubscribe;
-
+      const unreadMessages = userMessages.filter(message => message.from_user === 'admin' && !message.is_read);
+      updateNotificationBadge(unreadMessages.length);
+    } else {
+      noMessages.style.display = 'block';
+      messagesList.innerHTML = '';
+      updateNotificationBadge(0);
+    }
   } catch (error) {
-    console.error("Error setting up message listener:", error);
+    console.error("Error loading user's messages:", error);
     noMessages.style.display = 'none';
-    messagesList.innerHTML = `
-      <div class="empty-state">
-        <i class="fas fa-exclamation-circle empty-icon"></i>
-        <h3 class="empty-title">${getText('user.messages.loadError')}</h3>
-        <p class="empty-text">${getText('user.messages.loadError')}</p>
-      </div>
-    `;
-    updateNotificationBadge(0); // AÑADIR ESTA LÍNEA
+    messagesList.innerHTML = `<div class="empty-state error">${getText('user.messages.loadError')}</div>`;
+    updateNotificationBadge(0);
   }
 }
 
@@ -2245,111 +2123,50 @@ async function handleSendUserMessage() {
 
   const content = userMessageContent.value.trim();
 
-  // Validate form
   if (!content) {
     showMessageModal(getText('user.messages.sendError.noMessage'), getText('user.messages.sendError.noMessage'), 'error');
     return;
   }
 
   try {
-    // Mostrar indicador de carga
     sendUserMessageBtn.textContent = getText('user.messages.sending');
     sendUserMessageBtn.disabled = true;
 
-    // Obtener la fecha actual
-    const now = new Date();
-
-    // Agregar mensaje a Firestore
-    const messageRef = await addDoc(collection(db, "messages"), {
-      from: currentUser.id,
-      to: 'admin',
-      content: content,
-      date: serverTimestamp(),
-      read: false,
-      userName: currentUser.name
+    await fetch(`${API_BASE_URL}/messages.php`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-auth-token': localStorage.getItem('token'),
+      },
+      body: JSON.stringify({ to: 'admin', content }),
     });
 
-    // Actualizar el registro de mensajes enviados por el usuario
-    const userRef = doc(db, "users", currentUser.id);
-    const userDoc = await getDoc(userRef);
-
-    if (userDoc.exists()) {
-      const userData = userDoc.data();
-      const messagesSent = userData.messagesSent || [];
-
-      // Agregar el nuevo mensaje al registro
-      messagesSent.push({
-        id: messageRef.id,
-        date: now
-
-      });
-
-      // Actualizar el documento del usuario
-      await updateDoc(userRef, {
-        messagesSent: messagesSent
-      });
-    }
-
-    // Limpiar el formulario
     userMessageContent.value = '';
-
-    // Restaurar botón
     sendUserMessageBtn.textContent = getText('user.messages.sendMessage');
-
-    // Verificar límite de mensajes
     checkUserMessageLimit();
-
-    // Mostrar mensaje de éxito
     showMessageModal(getText('user.messages.sendSuccess'), getText('user.messages.sendSuccess'), 'success');
   } catch (error) {
     console.error("Error sending user message:", error);
     showMessageModal(getText('user.messages.sendError.general'), getText('user.messages.sendError.general'), 'error');
-
-    // Restaurar botón
     sendUserMessageBtn.textContent = getText('user.messages.sendMessage');
     sendUserMessageBtn.disabled = false;
   }
 }
 
-// Show delete message modal
 function showDeleteMessageModal(messageId) {
   deleteMessageId.value = messageId;
   deleteMessageModal.style.display = 'block';
 }
 
-// Handle delete message
 async function handleDeleteMessage() {
   const messageId = deleteMessageId.value;
 
   try {
-    // Eliminar mensaje de Firestore
-    await deleteDoc(doc(db, "messages", messageId));
-
-    if (!isAdmin) {
-      const userRef = doc(db, "users", currentUser.id);
-      const userDoc = await getDoc(userRef);
-
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        let messagesSent = userData.messagesSent || [];
-
-        // Filtrar el mensaje eliminado
-        messagesSent = messagesSent.filter(msg => msg.id !== messageId);
-
-        // Actualizar el documento del usuario
-        await updateDoc(userRef, {
-          messagesSent: messagesSent
-        });
-
-        // Verificar límite de mensajes
-        checkUserMessageLimit();
-      }
-    }
-
-    // Cerrar modal
+    await fetch(`${API_BASE_URL}/messages.php?messageId=${messageId}`, {
+      method: 'DELETE',
+      headers: { 'x-auth-token': localStorage.getItem('token') },
+    });
     deleteMessageModal.style.display = 'none';
-
-    // Mostrar mensaje de éxito
     showMessageModal(getText('user.messages.deleteSuccess'), getText('user.messages.deleteSuccess'), 'success');
   } catch (error) {
     console.error("Error deleting message:", error);
@@ -2751,15 +2568,15 @@ async function loadUsers() {
 
     showSpinner();
     try {
-        if (allAdminUsers.length === 0) {
-            const usersSnapshot = await getDocs(collection(db, "users"));
-            allAdminUsers = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        }
+        const res = await fetch(`${API_BASE_URL}/admin.php?users`, {
+            headers: { 'x-auth-token': localStorage.getItem('token') },
+        });
+        allAdminUsers = await res.json();
 
         registeredUsersCount.textContent = allAdminUsers.length;
 
         const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-        const activeUsers = allAdminUsers.filter(user => (user.lastActivity?.toDate?.() || new Date(0)) > oneHourAgo);
+        const activeUsers = allAdminUsers.filter(user => new Date(user.lastActivity) > oneHourAgo);
         activeUsersCount.textContent = activeUsers.length;
 
         filterUsers();
@@ -3146,26 +2963,23 @@ async function handleSaveUserEdit() {
   const name = editName.value.trim();
   const email = editEmail.value.trim();
 
-  // Validate form
   if (!name || !email) {
     showMessageModal(getText('modal.validationErrorTitle'), getText('modal.validationErrorText'), 'error');
     return;
   }
 
   try {
-    // Update user in Firestore
-    await updateDoc(doc(db, "users", userId), {
-      name: name,
-      email: email
+    await fetch(`${API_BASE_URL}/admin.php?userId=${userId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-auth-token': localStorage.getItem('token'),
+      },
+      body: JSON.stringify({ name, email }),
     });
-
-    // Close modal
     editUserModal.style.display = 'none';
-
     allAdminUsers = [];
     loadUsers();
-
-    // Show success message
     showMessageModal(getText('modal.updateSuccessTitle'), getText('modal.updateSuccessText'), 'success');
   } catch (error) {
     console.error("Error updating user:", error);
@@ -3281,16 +3095,13 @@ async function handleDeleteUser() {
   const userId = deleteUserId.value;
 
   try {
-    // Delete user from Firestore
-    await deleteDoc(doc(db, "users", userId));
-
-    // Close modal
+    await fetch(`${API_BASE_URL}/admin.php?userId=${userId}`, {
+      method: 'DELETE',
+      headers: { 'x-auth-token': localStorage.getItem('token') },
+    });
     deleteConfirmationModal.style.display = 'none';
-
     allAdminUsers = [];
     loadUsers();
-
-    // Show success message
     showMessageModal(getText('modal.deleteUserSuccessTitle'), getText('modal.deleteUserSuccessText'), 'success');
   } catch (error) {
     console.error("Error deleting user:", error);
@@ -3584,119 +3395,82 @@ function adjustSliders() {
 
 // Load all content
 async function loadAllContent() {
-    try {
-        // Show a loading indicator since this is a critical initial load
-        showSpinner();
-
-        // Fetch all content from Firestore and cache it
-        allContent = await fetchContentFromFirestore();
-        
-        // Populate movies and series content from the cached allContent
-        moviesContent = allContent.filter(item => item.media_type === 'movie');
-        seriesContent = allContent.filter(item => item.media_type === 'tv');
-
-        // Render the initial page content using the cached data
-        const heroContent = await generateHeroContent();
-        renderHeroSlides(heroContent);
-        preloadCriticalImages(heroContent);
-        
-        // Asynchronously load other non-critical content sections
-        loadDeferredContent();
-        renderCategories();
-        renderPlatforms();
-        startHeroSlideshow();
-
-    } catch (error) {
-        console.error('Error loading initial content:', error);
-        // Optionally, display an error message to the user
-    } finally {
-        // Hide the loading indicator
-        hideSpinner();
-    }
+  try {
+    showSpinner();
+    const res = await fetch(`${API_BASE_URL}/content.php`);
+    allContent = await res.json();
+    moviesContent = allContent.filter(item => item.media_type === 'movie');
+    seriesContent = allContent.filter(item => item.media_type === 'tv');
+    const heroContent = await generateHeroContent();
+    renderHeroSlides(heroContent);
+    preloadCriticalImages(heroContent);
+    loadDeferredContent();
+    renderCategories();
+    renderPlatforms();
+    startHeroSlideshow();
+  } catch (error) {
+    console.error('Error loading initial content:', error);
+  } finally {
+    hideSpinner();
+  }
 }
 
-async function fetchContentFromFirestore(filterOptions = {}) {
-    const {
-        mediaType,
-        limitNumber,
-        orderByField = 'imported_at',
-        orderByDirection = 'desc',
-        arrayContains
-    } = filterOptions;
-
-    try {
-        let q = collection(db, 'content');
-        const constraints = [];
-
-        if (mediaType) {
-            constraints.push(where('media_type', '==', mediaType));
-        }
-
-        if (arrayContains && arrayContains.field && arrayContains.value) {
-            constraints.push(where(arrayContains.field, 'array-contains', arrayContains.value));
-        }
-
-        constraints.push(orderBy(orderByField, orderByDirection));
-
-        if (limitNumber) {
-            constraints.push(limit(limitNumber));
-        }
-
-        const finalQuery = query(q, ...constraints);
-        const snapshot = await getDocs(finalQuery);
-        return snapshot.docs.map(doc => doc.data());
-
-    } catch (error) {
-        console.error("Error fetching content from Firestore:", error);
-        if (error.code === 'failed-precondition') {
-            console.error("This error may be caused by a missing composite index in Firestore. Please check the Firebase console to create the required index based on the error message.");
-        }
-        return [];
-    }
+async function fetchContent(filterOptions = {}) {
+  const { mediaType, limitNumber, orderByField = 'imported_at', orderByDirection = 'desc', arrayContains } = filterOptions;
+  try {
+    const params = new URLSearchParams({
+      mediaType,
+      limitNumber,
+      orderByField,
+      orderByDirection,
+      'arrayContains[field]': arrayContains?.field,
+      'arrayContains[value]': arrayContains?.value,
+    });
+    const res = await fetch(`${API_BASE_URL}/content.php?${params.toString()}`);
+    return await res.json();
+  } catch (error) {
+    console.error('Error fetching content:', error);
+    return [];
+  }
 }
 
 async function loadDeferredContent() {
-    try {
-        const { enEstreno, recienAgregado, peliculasPopulares, seriesPopulares } = webSettings.homepageSections;
+  try {
+    const { enEstreno, recienAgregado, peliculasPopulares, seriesPopulares } = webSettings.homepageSections;
 
-        // "En Estreno" - Filter from allContent
-        const enEstrenoContent = allContent
-            .filter(item => item.display_options?.home_sections?.includes('estreno'))
-            .sort((a, b) => new Date(b.release_date) - new Date(a.release_date));
-        await renderContentSlider(enEstrenoSlider, enEstrenoContent.slice(0, enEstreno));
+    const enEstrenoContent = allContent
+      .filter(item => item.display_options?.home_sections?.includes('estreno'))
+      .sort((a, b) => new Date(b.release_date) - new Date(a.release_date));
+    await renderContentSlider(enEstrenoSlider, enEstrenoContent.slice(0, enEstreno));
 
-        // "Recién Agregado" - Filter from allContent
-        const recentlyAddedContent = allContent
-            .filter(item => item.display_options?.home_sections?.includes('agregado'))
-            .sort((a, b) => (b.imported_at?.seconds || 0) - (a.imported_at?.seconds || 0));
-        await renderContentSlider(document.getElementById('recently-added-slider'), recentlyAddedContent.slice(0, recienAgregado));
-        
-        // "Trending" (Top 10) - This section remains fixed to 10
-        if (currentUser) {
-            const trending = await fetchTrendingPostersFromFirebase();
-            await renderContentSlider(trendingSlider, trending);
-        } else {
-            const randomTop10 = shuffleArray(allContent).slice(0, 10);
-            const formattedRandomTop10 = randomTop10.map(item => ({
-                posterId: item.id, mediaType: item.media_type, title: item.title || item.name,
-                posterPath: item.poster_path, vote_average: item.vote_average,
-                release_date: item.release_date || item.first_air_date,
-            }));
-            await renderContentSlider(trendingSlider, formattedRandomTop10);
-        }
-        
-        // "Popular Movies" (random slice from all movies)
-        await renderContentSlider(moviesSlider, shuffleArray(moviesContent).slice(0, peliculasPopulares));
-        
-        // "Popular Series" (random slice from all series)
-        await renderContentSlider(seriesSlider, shuffleArray(seriesContent).slice(0, seriesPopulares));
+    const recentlyAddedContent = allContent
+      .filter(item => item.display_options?.home_sections?.includes('agregado'))
+      .sort((a, b) => (new Date(b.imported_at)) - (new Date(a.imported_at)));
+    await renderContentSlider(document.getElementById('recently-added-slider'), recentlyAddedContent.slice(0, recienAgregado));
 
-        // Render dynamic sections
-        await renderDynamicSections();
-        
-    } catch (error) {
-        console.error('Error loading deferred content:', error);
+    if (currentUser) {
+      const trending = await fetchTrendingPosters();
+      await renderContentSlider(trendingSlider, trending);
+    } else {
+      const randomTop10 = shuffleArray(allContent).slice(0, 10);
+      const formattedRandomTop10 = randomTop10.map(item => ({
+        posterId: item.id,
+        mediaType: item.media_type,
+        title: item.title || item.name,
+        posterPath: item.poster_path,
+        vote_average: item.vote_average,
+        release_date: item.release_date || item.first_air_date,
+      }));
+      await renderContentSlider(trendingSlider, formattedRandomTop10);
     }
+
+    await renderContentSlider(moviesSlider, shuffleArray(moviesContent).slice(0, peliculasPopulares));
+    await renderContentSlider(seriesSlider, shuffleArray(seriesContent).slice(0, seriesPopulares));
+
+    await renderDynamicSections();
+  } catch (error) {
+    console.error('Error loading deferred content:', error);
+  }
 }
 
 function initializeCarousel(carouselSection) {
@@ -3831,13 +3605,13 @@ async function renderDynamicSections() {
   container.innerHTML = '';
 
   try {
-    const sectionsSnapshot = await getDocs(query(collection(db, 'home_sections'), orderBy('order')));
-    const sections = sectionsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const res = await fetch(`${API_BASE_URL}/home-sections.php`);
+    const sections = await res.json();
 
     for (const section of sections) {
       const sectionEl = document.createElement('section');
       sectionEl.className = 'content-row';
-      
+
       switch (section.type) {
         case 'category':
           const categoryContent = allContent.filter(item => item.genres?.includes(parseInt(section.options.categoryId)));
@@ -3856,26 +3630,26 @@ async function renderDynamicSections() {
           await renderContentSlider(document.getElementById(`slider-${section.id}`), shuffleArray(categoryContent).slice(0, 20));
           break;
         case 'single_image':
-            sectionEl.innerHTML = `
-        <div class="row-header">
-            <h2 class="section-title">${section.title}</h2>
-        </div>
-        <div class="image-carousel-section">
-            <div class="image-carousel-container" id="carousel-${section.id}">
-            ${section.options.images.map(image => `
-                <div class="image-carousel-slide" data-link-type="${image.linkType}" data-link-id="${image.linkId}" data-embed-url="${image.embedUrl || ''}">
-                <img src="${image.imageUrl}" alt="${section.title}">
+          sectionEl.innerHTML = `
+            <div class="row-header">
+                <h2 class="section-title">${section.title}</h2>
+            </div>
+            <div class="image-carousel-section">
+                <div class="image-carousel-container" id="carousel-${section.id}">
+                ${section.options.images.map(image => `
+                    <div class="image-carousel-slide" data-link-type="${image.linkType}" data-link-id="${image.linkId}" data-embed-url="${image.embedUrl || ''}">
+                    <img src="${image.imageUrl}" alt="${section.title}">
+                    </div>
+                `).join('')}
                 </div>
-            `).join('')}
-            </div>
-            <div class="image-carousel-controls">
-            <button class="carousel-arrow prev"><i class="fas fa-chevron-left"></i></button>
-            <button class="carousel-arrow next"><i class="fas fa-chevron-right"></i></button>
-            </div>
-        </div>`;
-            container.appendChild(sectionEl);
-            initializeCarousel(sectionEl.querySelector('.image-carousel-section'));
-            break;
+                <div class="image-carousel-controls">
+                <button class="carousel-arrow prev"><i class="fas fa-chevron-left"></i></button>
+                <button class="carousel-arrow next"><i class="fas fa-chevron-right"></i></button>
+                </div>
+            </div>`;
+          container.appendChild(sectionEl);
+          initializeCarousel(sectionEl.querySelector('.image-carousel-section'));
+          break;
         case 'view':
           const viewContent = allContent.filter(item => item.display_options?.main_sections?.includes(section.options.view));
           sectionEl.innerHTML = `
@@ -3896,79 +3670,35 @@ async function renderDynamicSections() {
         case 'ad_script':
           const adScriptContainer = document.createElement('div');
           adScriptContainer.className = 'ad-script-section';
-          
-          const iframe = document.createElement('iframe');
-          iframe.style.border = 'none';
-          iframe.style.width = '100%';
-          iframe.style.height = '0'; // Start with 0 height to avoid layout shift
-          iframe.setAttribute('scrolling', 'no');
-          
-          // Use srcdoc for a cleaner and more reliable script injection
-          iframe.srcdoc = `
-            <html>
-              <head><style>body { margin: 0; overflow: hidden; }</style></head>
-              <body>${section.options.script}</body>
-            </html>
-          `;
-          
-          adScriptContainer.appendChild(iframe);
+          adScriptContainer.innerHTML = section.options.script;
           sectionEl.appendChild(adScriptContainer);
           container.appendChild(sectionEl);
-          
-          iframe.addEventListener('load', () => {
-              try {
-                // Adjust height based on the iframe's content
-                const body = iframe.contentWindow.document.body;
-                const html = iframe.contentWindow.document.documentElement;
-                // A small delay might help if the ad script modifies the DOM shortly after loading
-                setTimeout(() => {
-                    const height = Math.max(body.scrollHeight, body.offsetHeight, html.clientHeight, html.scrollHeight, html.offsetHeight);
-                    iframe.style.height = height + 'px';
-                }, 100);
-              } catch (e) {
-                console.warn("Could not resize ad iframe, likely due to cross-origin restrictions.", e);
-              }
-          });
           break;
         case 'ad_video':
           if (sessionStorage.getItem('videoAdShown')) {
             break;
           }
           sessionStorage.setItem('videoAdShown', 'true');
-        
           const videoAdEl = document.createElement('div');
           videoAdEl.className = 'ad-video-popup';
-          
-          const isDirectVideo = section.options.videoUrl.endsWith('.mp4') || section.options.videoUrl.endsWith('.webm');
-
-          if (isDirectVideo) {
-            videoAdEl.innerHTML = `
+          videoAdEl.innerHTML = `
               <video autoplay muted loop playsinline src="${section.options.videoUrl}"></video>
               <button class="close-ad-btn">×</button>
-              <button class="mute-ad-btn"><i class="fas fa-bell-slash"></i></button>
+              <button class="mute-ad-btn"><i class="fas fa-volume-mute"></i></button>
             `;
-            const video = videoAdEl.querySelector('video');
-            const muteBtn = videoAdEl.querySelector('.mute-ad-btn');
-            muteBtn.addEventListener('click', () => {
-              video.muted = !video.muted;
-              muteBtn.innerHTML = video.muted ? '<i class="fas fa-bell-slash"></i>' : '<i class="fas fa-bell"></i>';
-            });
-          } else {
-            videoAdEl.innerHTML = `
-              <iframe src="${section.options.videoUrl}" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
-              <button class="close-ad-btn">×</button>
-            `;
-          }
-
           document.body.appendChild(videoAdEl);
           videoAdEl.querySelector('.close-ad-btn').addEventListener('click', () => {
             videoAdEl.remove();
+          });
+          videoAdEl.querySelector('.mute-ad-btn').addEventListener('click', (e) => {
+            const video = videoAdEl.querySelector('video');
+            video.muted = !video.muted;
+            e.currentTarget.innerHTML = video.muted ? '<i class="fas fa-volume-mute"></i>' : '<i class="fas fa-volume-up"></i>';
           });
           break;
       }
     }
 
-    // Add event listeners for new elements
     document.querySelectorAll('.single-image-section').forEach(el => {
       el.addEventListener('click', () => {
         const { linkType, linkId } = el.dataset;
@@ -4000,7 +3730,7 @@ async function renderDynamicSections() {
         navigateSlider(slider, 'next');
       });
     });
-    
+
   } catch (error) {
     console.error("Error rendering dynamic sections:", error);
   }
@@ -4496,21 +4226,12 @@ async function handleCategoryClick(e) {
 
 async function removeFromMyList(itemId) {
   if (!currentUser) return;
-  
+
   try {
-    const userDoc = await getDoc(doc(db, "users", currentUser.id));
-    
-    if (userDoc.exists()) {
-      const userData = userDoc.data();
-      let myList = userData.myList || [];
-      
-      myList = myList.filter(item => item.id !== itemId);
-      
-      await updateDoc(doc(db, "users", currentUser.id), {
-        myList: myList
-      });
-     
-    }
+    await fetch(`${API_BASE_URL}/my-list.php?contentId=${itemId}`, {
+      method: 'DELETE',
+      headers: { 'x-auth-token': localStorage.getItem('token') },
+    });
   } catch (error) {
     console.error("Error removing from my list:", error);
     showToast(getText('toast.removeFromListError'), 'error');
@@ -4530,39 +4251,19 @@ async function saveToMyList(item, btnElement = null) {
   }
 
   try {
-    await updatePosterClickCount(item.id, item.media_type, item.title || item.name, item.poster_path, item.vote_average);
+    await fetch(`${API_BASE_URL}/my-list.php`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-auth-token': localStorage.getItem('token'),
+      },
+      body: JSON.stringify({ contentId: item.id }),
+    });
 
-    const userRef = doc(db, "users", currentUser.id);
-    const userDoc = await getDoc(userRef);
-
-    if (userDoc.exists()) {
-      const userData = userDoc.data();
-      let myList = userData.myList || [];
-      const existingIndex = myList.findIndex(content => content.id === item.id && content.media_type === item.media_type);
-
-      if (existingIndex === -1) {
-        myList.push({
-          id: item.id,
-          media_type: item.media_type,
-          title: item.title || item.name,
-          poster_path: item.poster_path,
-          release_date: item.release_date || item.first_air_date,
-          vote_average: item.vote_average,
-          lastVisited: new Date().toISOString()
-        });
-        await updateDoc(userRef, { myList: myList });
-        if (btnElement) {
-          btnElement.innerHTML = `<i class="fas fa-check"></i> ${getText('actions.added')}`;
-        } else {
-          showToast(getText('toast.addedToList'), 'success');
-        }
-      } else {
-        if (btnElement) {
-          btnElement.innerHTML = `<i class="fas fa-info-circle"></i> ${getText('actions.alreadyInList')}`;
-        } else {
-          showToast(getText('toast.alreadyInList'), 'info');
-        }
-      }
+    if (btnElement) {
+      btnElement.innerHTML = `<i class="fas fa-check"></i> ${getText('actions.added')}`;
+    } else {
+      showToast(getText('toast.addedToList'), 'success');
     }
   } catch (error) {
     console.error("Error saving to my list:", error);
@@ -4576,7 +4277,7 @@ async function saveToMyList(item, btnElement = null) {
       setTimeout(() => {
         btnElement.disabled = false;
         btnElement.innerHTML = originalBtnHtml;
-      }, 2500); // Revert button after 2.5 seconds
+      }, 2500);
     }
   }
 }
@@ -4589,57 +4290,28 @@ async function saveToMyList(item, btnElement = null) {
     spinnerContainer.style.display = 'none';
   }
 
-  async function updatePosterClickCount(posterId, mediaType, title, posterPath, voteAverage) {
-    try {
-      const posterRef = doc(db, "posterClicks", String(posterId));
-      const posterDoc = await getDoc(posterRef);
-
-      if (posterDoc.exists()) {
-        // If poster exists, increment clickCount
-        await updateDoc(posterRef, {
-          clickCount: posterDoc.data().clickCount + 1,
-          lastClicked: serverTimestamp(),
-          mediaType: mediaType,
-          title: title,
-          posterPath: posterPath,
-          vote_average: voteAverage
-        });
-      } else {
-        // If poster does not exist, create it with clickCount = 1
-        await setDoc(posterRef, {
-          posterId: String(posterId), // Store as string
-          mediaType: mediaType,
-          title: title,
-          posterPath: posterPath,
-          vote_average: voteAverage,
-          clickCount: 1,
-          lastClicked: serverTimestamp()
-        });
-      }
-    } catch (error) {
-      console.error("Error updating poster click count:", error);
-    }
+async function updatePosterClickCount(posterId) {
+  try {
+    await fetch(`${API_BASE_URL}/click.php`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ posterId }),
+    });
+  } catch (error) {
+    console.error("Error updating poster click count:", error);
   }
+}
 
-  async function fetchTrendingPostersFromFirebase() {
-    try {
-      const q = query(
-        collection(db, "posterClicks"),
-        orderBy("clickCount", "desc"),
-        limit(10)
-      );
-      const querySnapshot = await getDocs(q);
-      const trendingData = [];
-      querySnapshot.forEach((doc) => {
-        trendingData.push(doc.data());
-      });
-      trendingContent = trendingData; 
-      return trendingData;
-    } catch (error) {
-      console.error("Error fetching trending posters from Firebase:", error);
-      return [];
-    }
+async function fetchTrendingPosters() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/trending.php`);
+    trendingContent = await res.json();
+    return trendingContent;
+  } catch (error) {
+    console.error("Error fetching trending posters:", error);
+    return [];
   }
+}
 
 async function fetchContentByIds(ids, type) {
   if (!ids || ids.length === 0) return [];
@@ -4772,41 +4444,37 @@ async function translateContentToDisplayLanguage(contentItems) {
 }
 
 async function generateHeroContent() {
-    try {
-        const { posters, random, recent } = webSettings.heroSlider;
+  try {
+    const { posters, random, recent } = webSettings.heroSlider;
 
-        const recentQuery = query(
-            collection(db, 'content'),
-            orderBy('imported_at', 'desc'),
-            limit(recent * 2) // Fetch more to ensure we get enough with backdrop_path
-        );
-        const recentSnapshot = await getDocs(recentQuery);
-        const recentItems = recentSnapshot.docs.map(doc => doc.data());
-        
-        const recentContent = recentItems.filter(item => item.backdrop_path).slice(0, recent);
-        const recentIds = recentContent.map(item => item.id);
+    const recentContent = allContent
+      .sort((a, b) => new Date(b.imported_at) - new Date(a.imported_at))
+      .filter(item => item.backdrop_path)
+      .slice(0, recent);
 
-        const randomCandidates = allContent.filter(item => 
-            item.backdrop_path &&
-            !recentIds.includes(item.id)
-        );
+    const recentIds = recentContent.map(item => item.id);
 
-        const randomContent = shuffleArray(randomCandidates).slice(0, random);
+    const randomCandidates = allContent.filter(item =>
+      item.backdrop_path &&
+      !recentIds.includes(item.id)
+    );
 
-        let finalHeroContentSource = shuffleArray([...recentContent, ...randomContent]).slice(0, posters);
-        
-		if (webSettings.displayLanguage === 'en-US') {
-            const englishContent = await fetchHeroDetailsInEnglish(finalHeroContentSource);
-            return englishContent;
-        }
+    const randomContent = shuffleArray(randomCandidates).slice(0, random);
 
-        return finalHeroContentSource;
-        
-    } catch (error) {
-        console.error('Error generating hero content, using a simple random fallback:', error);
-        const allCandidates = allContent.filter(item => item.backdrop_path);
-        return shuffleArray(allCandidates).slice(0, webSettings.heroSlider.posters);
+    let finalHeroContentSource = shuffleArray([...recentContent, ...randomContent]).slice(0, posters);
+
+    if (webSettings.displayLanguage === 'en-US') {
+      const englishContent = await fetchHeroDetailsInEnglish(finalHeroContentSource);
+      return englishContent;
     }
+
+    return finalHeroContentSource;
+
+  } catch (error) {
+    console.error('Error generating hero content, using a simple random fallback:', error);
+    const allCandidates = allContent.filter(item => item.backdrop_path);
+    return shuffleArray(allCandidates).slice(0, webSettings.heroSlider.posters);
+  }
 }
 
 
@@ -4966,26 +4634,24 @@ async function showMovieDetailsModal(id, type, pushState = true) {
 
     try {
         const displayLanguage = webSettings.displayLanguage || 'es-MX';
-        const response = await fetch(`${API_BASE_URL}/${type}/${id}?api_key=${API_KEY}&language=${displayLanguage}&append_to_response=credits`);
-        
-        if (!response.ok) {
-            const contentRef = doc(db, 'content', String(id));
-            const contentDoc = await getDoc(contentRef);
-            if (!contentDoc.exists()) throw new Error(getText('modal.contentNotFound'));
-            
-            const data = contentDoc.data();
-            await updatePosterClickCount(data.id, type, data.title || data.name, data.poster_path, data.vote_average);
-            await renderModalContent(data, type);
-        } else {
-            const data = await response.json();
-            if (pushState) {
-                const slug = createSlug(data.title || data.name);
-                // Use hash-based navigation
-                history.pushState({ id: data.id, type: type, slug: slug }, '', `#${slug}`);
-            }
-            await updatePosterClickCount(data.id, type, data.title || data.name, data.poster_path, data.vote_average);
-            await renderModalContent(data, type);
+        let data;
+        try {
+            const response = await fetch(`https://api.themoviedb.org/3/${type}/${id}?api_key=32e5e53999e380a0291d66fb304153fe&language=${displayLanguage}&append_to_response=credits`);
+            if (!response.ok) throw new Error('TMDB fetch failed');
+            data = await response.json();
+        } catch (tmdbError) {
+            const backendResponse = await fetch(`${API_BASE_URL}/content/${id}`);
+            if (!backendResponse.ok) throw new Error(getText('modal.contentNotFound'));
+            data = await backendResponse.json();
         }
+
+        if (pushState) {
+            const slug = createSlug(data.title || data.name);
+            history.pushState({ id: data.id, type: type, slug: slug }, '', `#${slug}`);
+        }
+        await updatePosterClickCount(data.id, type, data.title || data.name, data.poster_path, data.vote_average);
+        await renderModalContent(data, type);
+
     } catch (error) {
         console.error('Error showing movie details:', error);
         if (contentWrapper) {
@@ -4996,17 +4662,14 @@ async function showMovieDetailsModal(id, type, pushState = true) {
 
 async function renderModalContent(data, type) {
     const modalContainer = document.getElementById('movie-details-modal-container');
-    const contentRef = doc(db, 'content', String(data.id));
-    const contentDoc = await getDoc(contentRef);
-    const firestoreData = contentDoc.exists() ? contentDoc.data() : {};
+    const res = await fetch(`${API_BASE_URL}/content.php?id=${data.id}`);
+    const backendData = res.ok ? await res.json() : {};
 
     const title = data.title || data.name || getText('content.noTitle');
-    const posterPath = data.poster_path ? `${IMG_BASE_URL}/w300${data.poster_path}` : 'https://via.placeholder.com/300x450?text=No+Image';
-    const backdropPath = data.backdrop_path ? `${IMG_BASE_URL}/original${data.backdrop_path}` : '';
+    const posterPath = data.poster_path ? `https://image.tmdb.org/t/p/w300${data.poster_path}` : 'https://via.placeholder.com/300x450?text=No+Image';
+    const backdropPath = data.backdrop_path ? `https://image.tmdb.org/t/p/original${data.backdrop_path}` : '';
     const overview = data.overview || getText('details.noDescription');
-    
     const genres = data.genres?.map(g => g.name).join(', ') || getText('content.notAvailable');
-    
     let director = getText('content.notAvailable');
     if (data.credits) {
         if (type === 'movie') {
@@ -5016,38 +4679,29 @@ async function renderModalContent(data, type) {
             director = data.created_by.map(creator => creator.name).join(', ');
         }
     }
-
     const cast = data.credits?.cast.slice(0, 6).map(actor => actor.name).join(', ') || getText('content.notAvailable');
-
-    const nextEpisodeNote = firestoreData.next_episode_note || '';
-    const noteHtml = nextEpisodeNote
-        ? `<div class="next-episode-note">
-             <i class="fas fa-info-circle"></i> ${nextEpisodeNote}
-           </div>`
-        : '';
+    const nextEpisodeNote = backendData.next_episode_note || '';
+    const noteHtml = nextEpisodeNote ? `<div class="next-episode-note"><i class="fas fa-info-circle"></i> ${nextEpisodeNote}</div>` : '';
 
     let relatedContent = [];
     if (type === 'movie') {
         relatedContent = shuffleArray(allContent.filter(item => item.media_type === 'movie' && item.id !== data.id)).slice(0, 10);
-    } else { // type === 'tv'
+    } else {
         relatedContent = shuffleArray(allContent.filter(item => item.media_type === 'tv' && item.id !== data.id)).slice(0, 10);
     }
 
     const relatedContentMobile = relatedContent.slice(0, 6);
-
     const relatedContentGridHtml = relatedContent.map(item => `
         <div class="grid-card related-card" data-id="${item.id}" data-type="${item.media_type}">
-            <img src="${item.poster_path ? `${IMG_BASE_URL}/w300${item.poster_path}` : 'https://via.placeholder.com/300x450?text=No+Image'}" alt="${item.title || item.name}" class="grid-poster">
-                <div class="card-rating">${item.vote_average ? item.vote_average.toFixed(1) : getText('content.notAvailable')}</div>
-        </div>
-    `).join('');
+            <img src="${item.poster_path ? `https://image.tmdb.org/t/p/w300${item.poster_path}` : 'https://via.placeholder.com/300x450?text=No+Image'}" alt="${item.title || item.name}" class="grid-poster">
+            <div class="card-rating">${item.vote_average ? item.vote_average.toFixed(1) : getText('content.notAvailable')}</div>
+        </div>`).join('');
 
     const relatedContentGridHtmlMobile = relatedContentMobile.map(item => `
         <div class="grid-card related-card" data-id="${item.id}" data-type="${item.media_type}">
-            <img src="${item.poster_path ? `${IMG_BASE_URL}/w300${item.poster_path}` : 'https://via.placeholder.com/300x450?text=No+Image'}" alt="${item.title || item.name}" class="grid-poster">
-                <div class="card-rating">${item.vote_average ? item.vote_average.toFixed(1) : getText('content.notAvailable')}</div>
-        </div>
-    `).join('');
+            <img src="${item.poster_path ? `https://image.tmdb.org/t/p/w300${item.poster_path}` : 'https://via.placeholder.com/300x450?text=No+Image'}" alt="${item.title || item.name}" class="grid-poster">
+            <div class="card-rating">${item.vote_average ? item.vote_average.toFixed(1) : getText('content.notAvailable')}</div>
+        </div>`).join('');
 
     let modalContentHtml = `
         ${backdropPath ? `<div class="modal-backdrop" style="background-image: url('${backdropPath}')"><div class="modal-backdrop-overlay"></div></div>` : ''}
@@ -5058,9 +4712,7 @@ async function renderModalContent(data, type) {
                 </div>
                 <div class="related-content-container related-desktop">
                     <h3 data-translate="details.youMightLike">${getText('details.youMightLike')}</h3>
-                    <div class="related-content-grid">
-                        ${relatedContentGridHtml}
-                    </div>
+                    <div class="related-content-grid">${relatedContentGridHtml}</div>
                 </div>
             </div>
             <div class="modal-sidebar-content">
@@ -5083,9 +4735,7 @@ async function renderModalContent(data, type) {
             </div>
             <div class="related-content-container related-mobile">
                 <h3 data-translate="details.youMightLike">${getText('details.youMightLike')}</h3>
-                <div class="related-content-grid">
-                    ${relatedContentGridHtmlMobile}
-                </div>
+                <div class="related-content-grid">${relatedContentGridHtmlMobile}</div>
             </div>
         </div>`;
 
@@ -5117,23 +4767,17 @@ async function renderModalContent(data, type) {
     }
 
     try {
-        const sectionsSnapshot = await getDocs(collection(db, 'modal_sections'));
-        const sections = sectionsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        sections.sort((a, b) => (a.order || 0) - (b.order || 0));
-
+        const res = await fetch(`${API_BASE_URL}/modal-sections.php`);
+        const sections = await res.json();
         sections.forEach(section => {
             if (section.type === 'ad_script_modal' && section.options.script) {
                 const adContainer = document.createElement('div');
                 adContainer.className = 'ad-container';
-                
                 const positionSelector = section.options.position;
                 const targetElement = modalContainer.querySelector(`.${positionSelector.replace(/ /g, '.')}`);
-
                 if (targetElement) {
                     targetElement.parentNode.insertBefore(adContainer, targetElement.nextSibling);
                     executeScriptInContainer(adContainer, section.options.script);
-                } else {
-                    console.warn(`Target element for ad not found: ${positionSelector}`);
                 }
             }
         });
@@ -5141,8 +4785,8 @@ async function renderModalContent(data, type) {
         console.error("Error loading modal ad sections:", error);
     }
     
-    const videoData = firestoreData.video_url || null;
-    const seasonData = firestoreData.seasons || null;
+    const videoData = backendData.video_url || null;
+    const seasonData = backendData.seasons || null;
 
     if (type === 'movie') {
         if (videoData) {
@@ -5152,17 +4796,12 @@ async function renderModalContent(data, type) {
             document.getElementById('media-options-container').innerHTML = `<p class="empty-text">${getText('details.videoNotAvailable')}</p>`;
         }
     } else if (type === 'tv') {
-        renderFirestoreSeriesAccordion(seasonData);
-
+        renderSeriesAccordion(seasonData);
         let firstEpisodeUrl = null;
-        if (seasonData && Object.keys(seasonData).length > 0) {
-            const sortedSeasons = Object.values(seasonData).sort((a, b) => a.season_number - b.season_number);
-            let firstSeasonWithEpisodes = sortedSeasons.find(s => s.season_number > 0 && s.episodes && Object.keys(s.episodes).length > 0) || sortedSeasons.find(s => s.episodes && Object.keys(s.episodes).length > 0);
-            if (firstSeasonWithEpisodes) {
-                const sortedEpisodes = Object.values(firstSeasonWithEpisodes.episodes).sort((a, b) => a.episode_number - b.episode_number);
-                if (sortedEpisodes.length > 0 && sortedEpisodes[0].video_url) {
-                    firstEpisodeUrl = sortedEpisodes[0].video_url;
-                }
+        if (seasonData && seasonData.length > 0) {
+            const firstSeason = seasonData.find(s => s.episodes && s.episodes.length > 0);
+            if (firstSeason) {
+                firstEpisodeUrl = firstSeason.episodes[0].video_url;
             }
         }
 
@@ -5183,7 +4822,7 @@ async function handleTmdbSearch() {
 
   showSpinner();
   try {
-    const response = await fetch(`${API_BASE_URL}/search/multi?api_key=${API_KEY}&language=${webSettings.importLanguage}&query=${encodeURIComponent(query)}`);
+    const response = await fetch(`https://api.themoviedb.org/3/search/multi?api_key=32e5e53999e380a0291d66fb304153fe&language=${webSettings.importLanguage}&query=${encodeURIComponent(query)}`);
     if (!response.ok) {
       throw new Error(getText('tmdb.searchError'));
     }
@@ -5209,16 +4848,15 @@ function renderTmdbSearchResults(results) {
 
   results.forEach(async (item) => {
     const card = document.createElement('div');
-    card.className = 'grid-card'; 
+    card.className = 'grid-card';
 
-    const posterPath = `${IMG_BASE_URL}/w300${item.poster_path}`;
+    const posterPath = `https://image.tmdb.org/t/p/w300${item.poster_path}`;
     const title = item.title || item.name;
     const year = (item.release_date || item.first_air_date || '').split('-')[0] || getText('content.notAvailable');
     const type = item.media_type === 'movie' ? getText('content.type.movie') : getText('content.type.series');
-    
-    const contentRef = doc(db, 'content', String(item.id));
-    const contentDoc = await getDoc(contentRef);
-    const alreadyExists = contentDoc.exists();
+
+    const res = await fetch(`${API_BASE_URL}/content/${item.id}`);
+    const alreadyExists = res.ok;
 
     card.innerHTML = `
       <img src="${posterPath}" alt="${title}" class="grid-poster">
@@ -5238,13 +4876,13 @@ function renderTmdbSearchResults(results) {
     `;
 
     if (alreadyExists) {
-        card.querySelector('.delete-btn').addEventListener('click', () => {
-            showDeleteContentConfirmationModal(item.id);
-        });
+      card.querySelector('.delete-btn').addEventListener('click', () => {
+        showDeleteContentConfirmationModal(item.id);
+      });
     } else {
-        card.querySelector('.import-btn').addEventListener('click', () => {
-            importTmdbContent(item);
-        });
+      card.querySelector('.import-btn').addEventListener('click', () => {
+        importTmdbContent(item);
+      });
     }
 
     resultsContainer.appendChild(card);
@@ -5256,11 +4894,9 @@ async function importTmdbContent(item) {
     showMessageModal(getText('modal.notAuthorizedTitle'), getText('modal.notAuthorizedText'), 'error');
     return;
   }
-  
-  const contentRef = doc(db, 'content', String(item.id));
-  const contentDoc = await getDoc(contentRef);
 
-  if (contentDoc.exists()) {
+  const res = await fetch(`${API_BASE_URL}/content/${item.id}`);
+  if (res.ok) {
     showMessageModal(getText('modal.duplicateContentTitle'), getText('modal.duplicateContentText'), 'info');
     return;
   }
@@ -5638,37 +5274,23 @@ async function confirmImportWithSections(event) {
         };
 
         if (isEditMode) {
-            // --- EDIT LOGIC ---
-            const contentRef = doc(db, 'content', String(item.id));
             const updateData = { display_options: displayOptions };
             if (item.media_type === 'tv') {
                 updateData.next_episode_note = document.getElementById('next-episode-note').value.trim();
             }
-            await updateDoc(contentRef, updateData);
-
-
-            // Update the item in the global allContent array
-            const index = allContent.findIndex(content => content.id === item.id);
-            if (index > -1) {
-                allContent[index].display_options = displayOptions;
-                if (item.media_type === 'tv') {
-                    allContent[index].next_episode_note = updateData.next_episode_note;
-                }
-                itemToEdit.display_options = displayOptions; // Also update the object in memory
-            }
+            await fetch(`${API_BASE_URL}/content.php?id=${item.id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-auth-token': localStorage.getItem('token'),
+                },
+                body: JSON.stringify(updateData),
+            });
             
             importOptionsModal.style.display = 'none';
-            document.getElementById('next-episode-note-group').style.display = 'none';
-            
-            // Restore original modal title and button text
-            document.getElementById('import-options-title').textContent = getText('modal.importOptionsTitle');
-            confirmImport.textContent = getText('modal.importButton');
-
-            // Now that sections are saved, proceed to URL editing
             await showVideoUrlModal(itemToEdit);
 
         } else {
-            // --- IMPORT LOGIC (existing code) ---
             if (item.media_type === 'movie' && !mainSections.includes('movies')) {
                 mainSections.push('movies');
             }
@@ -5677,63 +5299,25 @@ async function confirmImportWithSections(event) {
             }
             displayOptions.main_sections = mainSections;
 
-            const contentDataForFirestore = {
-                id: item.id,
-                media_type: item.media_type,
-                title: item.title || item.name,
-                original_title: item.original_title || item.original_name,
-                overview: item.overview,
-                poster_path: item.poster_path,
-                backdrop_path: item.backdrop_path,
-                release_date: item.release_date || item.first_air_date,
-                vote_average: item.vote_average,
-                genres: item.genres ? item.genres.map(g => g.id) : (item.genre_ids || []),
-                imported_at: serverTimestamp(),
-                imported_by: currentUser.email,
-                display_options: displayOptions,
-            };
+            const contentData = { ...item, display_options: displayOptions };
 
-            if (item.media_type === 'movie') {
-                contentDataForFirestore.video_url = item.video_url || '';
-            } else if (item.media_type === 'tv') {
-                contentDataForFirestore.next_episode_note = document.getElementById('next-episode-note').value.trim();
-                const seasons = {};
-                if (item.seasons) {
-                    item.seasons
-                        .filter(season => season.season_number !== 0)
-                        .forEach(season => {
-                            const episodes = {};
-                            if (season.episodes) {
-                                season.episodes.forEach(episode => {
-                                    episodes[episode.episode_number] = {
-                                        episode_number: episode.episode_number, name: episode.name, overview: episode.overview,
-                                        air_date: episode.air_date, still_path: episode.still_path, video_url: episode.video_url || ''
-                                    };
-                                });
-                            }
-                            seasons[season.season_number] = {
-                                season_number: season.season_number, name: season.name, poster_path: season.poster_path,
-                                air_date: season.air_date, episodes: episodes
-                            };
-                        });
-                }
-                contentDataForFirestore.seasons = seasons;
-            }
-            
-            const contentRef = doc(db, 'content', String(item.id));
-            await setDoc(contentRef, contentDataForFirestore);
+            await fetch(`${API_BASE_URL}/content.php`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-auth-token': localStorage.getItem('token'),
+                },
+                body: JSON.stringify(contentData),
+            });
 
-            const contentDataForClient = { ...contentDataForFirestore, imported_at: { seconds: Math.floor(new Date().getTime() / 1000) } };
-            allContent.push(contentDataForClient);
-
+            allContent.push(contentData);
             moviesContent = allContent.filter(i => i.media_type === 'movie');
             seriesContent = allContent.filter(i => i.media_type === 'tv');
 
             await refreshUI();
             
-            showMessageModal(getText('modal.successTitle'), getText('modal.importSuccess', { title: contentDataForFirestore.title }), 'success');
+            showMessageModal(getText('modal.successTitle'), getText('modal.importSuccess', { title: contentData.title }), 'success');
             importOptionsModal.style.display = 'none';
-            document.getElementById('next-episode-note-group').style.display = 'none';
             itemToImport = null;
         }
 
@@ -5742,7 +5326,6 @@ async function confirmImportWithSections(event) {
         showMessageModal(getText('modal.errorTitle'), getText('modal.saveOptionsError'), 'error');
     } finally {
         hideSpinner();
-        // Resetting is handled within each logic path now
     }
 }
 
@@ -5781,22 +5364,15 @@ function showDeleteContentConfirmationModal(contentId) {
 
 async function loadWebSettings() {
   try {
-    const settingsRef = doc(db, "web_config", "settings");
-    const settingsDoc = await getDoc(settingsRef);
-    if (settingsDoc.exists()) {
-      const fetchedSettings = settingsDoc.data();
-      // Deep merge with defaults to avoid losing nested properties
-      webSettings = {
-        ...webSettings,
-        ...fetchedSettings,
-        heroSlider: { ...webSettings.heroSlider, ...fetchedSettings.heroSlider },
-        homepageSections: { ...webSettings.homepageSections, ...fetchedSettings.homepageSections },
-      };
-      console.log("Web settings loaded from Firestore.");
-    } else {
-      console.log("No web settings found in Firestore, using defaults and saving them.");
-      await setDoc(settingsRef, webSettings);
-    }
+    const res = await fetch(`${API_BASE_URL}/settings.php`);
+    const fetchedSettings = await res.json();
+    webSettings = {
+      ...webSettings,
+      ...fetchedSettings,
+      heroSlider: { ...webSettings.heroSlider, ...fetchedSettings.heroSlider },
+      homepageSections: { ...webSettings.homepageSections, ...fetchedSettings.homepageSections },
+    };
+    console.log("Web settings loaded from backend.");
   } catch (error) {
     console.error("Error loading web settings, using defaults:", error);
   }
@@ -5872,15 +5448,20 @@ async function saveWebSettings(e) {
       }
     };
 
-    const settingsRef = doc(db, "web_config", "settings");
-    await setDoc(settingsRef, newSettings);
+    await fetch(`${API_BASE_URL}/settings.php`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-auth-token': localStorage.getItem('token'),
+      },
+      body: JSON.stringify(newSettings),
+    });
     
-    webSettings = newSettings; // Update global object
+    webSettings = newSettings;
     
-    // Apply changes dynamically without reloading
     await loadAllContent();
     applyStaticTranslations();
-    updateUIForLoggedInUser(); // To update dropdown text language if changed
+    updateUIForLoggedInUser();
 
     showMessageModal(getText('settings.saveSuccess'), getText('settings.saveSuccess'), 'success');
 
@@ -5898,8 +5479,10 @@ async function handleDeleteContent() {
 
     showSpinner();
     try {
-        // 1. Delete from Firestore
-        await deleteDoc(doc(db, "content", String(contentId)));
+        await fetch(`${API_BASE_URL}/content.php?id=${contentId}`, {
+            method: 'DELETE',
+            headers: { 'x-auth-token': localStorage.getItem('token') },
+        });
 
         const index = allContent.findIndex(item => String(item.id) === contentId);
         if (index > -1) {
@@ -5922,48 +5505,6 @@ async function handleDeleteContent() {
     }
 }
 
-async function seedDatabase() {
-    if (!isAdmin) {
-        showMessageModal(getText('modal.notAuthorizedTitle'), getText('modal.notAuthorizedText'), 'error');
-        return;
-    }
-
-    const confirmation = confirm(getText('modal.seedDbConfirm'));
-    if (!confirmation) {
-        return;
-    }
-
-    showSpinner();
-    try {
-        const allIds = [...seedContentIds.movies, ...seedContentIds.series];
-        let importedCount = 0;
-        let skippedCount = 0;
-
-        for (const id of allIds) {
-            const media_type = seedContentIds.movies.includes(id) ? 'movie' : 'tv';
-            const contentRef = doc(db, 'content', String(id));
-            const contentDoc = await getDoc(contentRef);
-
-            if (contentDoc.exists()) {
-                skippedCount++;
-                continue;
-            }
-
-            const item = await fetchContentByIds([id], media_type);
-            if (item && item.length > 0) {
-                await importTmdbContent(item[0]);
-                importedCount++;
-            }
-        }
-
-        showMessageModal(getText('modal.seedDbSuccessTitle'), getText('modal.seedDbSuccessText', { importedCount, skippedCount }), 'success');
-    } catch (error) {
-        console.error('Error poblando la base de datos:', error);
-        showMessageModal(getText('modal.errorTitle'), getText('modal.seedDbError'), 'error');
-    } finally {
-        hideSpinner();
-    }
-}
 
   function shuffleArray(array) {
     const newArray = [...array];
@@ -6172,13 +5713,11 @@ function renderManageableContentGrid(content, append = false) {
 
 function showEditContentModal(item) {
     isEditMode = true;
-    itemToEdit = item; // Store the item being edited
+    itemToEdit = item;
 
-    // Pre-populate the import options modal
     const form = document.getElementById('import-options-form');
-    form.reset(); // Reset previous selections
+    form.reset();
 
-    // Show/hide and populate the next episode note field
     const nextEpisodeNoteGroup = document.getElementById('next-episode-note-group');
     const nextEpisodeNote = document.getElementById('next-episode-note');
     if (item.media_type === 'tv') {
