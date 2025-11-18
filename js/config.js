@@ -1,15 +1,9 @@
-const firebaseConfig = {
-  apiKey: "AIzaSyBNeedBwkLS_U0a048mZ233DSM-bMh789U",
-  authDomain: "streamfusion-app.firebaseapp.com",
-  projectId: "streamfusion-app",
-  storageBucket: "streamfusion-app.firebasestorage.app",
-  messagingSenderId: "1023470476009",
-  appId: "1:1023470476009:web:f398cd8daf7cf55b782e78",
-  measurementId: "G-35C7CJHLKB"
-};
+// Este archivo solía contener la configuración de Firebase y la clave de API.
+// Ambas han sido eliminadas como parte de la migración a un backend propio con MySQL.
 
-const API_KEY = '32e5e53999e380a0291d66fb304153fe';
-
+// La lógica del backend ahora maneja la identificación del administrador.
 const ADMIN_EMAIL = 'javiervelasquez0618@gmail.com';
 
-export { firebaseConfig, API_KEY, ADMIN_EMAIL };
+// La clave de API de TMDB ahora se gestiona de forma segura en el backend.
+
+export { ADMIN_EMAIL };
