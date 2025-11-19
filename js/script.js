@@ -151,6 +151,8 @@ const translations = {
         'modal.inTheatersSection': 'En Estreno/Emisión',
         'modal.recentlyAddedSection': 'Recién Agregado',
         'modal.platformsLabel': 'Plataformas (si aplica):',
+        'modal.qualityLabel': 'Calidad:',
+        'modal.languageLabel': 'Idioma:',
         'modal.importButton': 'Importar',
         'modal.addVideoUrlsTitle': 'Agregar URLs de Video',
         'modal.importCsvButton': 'Importar CSV',
@@ -2583,10 +2585,24 @@ function createContentCard(item, context = 'slider', sliderId = '') {
     const year = (item.release_date || item.first_air_date || '').split('-')[0] || getText('content.notAvailable');
     const rating = item.vote_average ? item.vote_average.toFixed(1) : getText('content.notAvailable');
     const type = item.media_type === 'movie' ? getText('content.type.movie') : getText('content.type.series');
+    const quality = item.display_options?.quality; // 'hd' or 'cam'
+    const language = item.display_options?.language; // 'es' or 'sub'
+
+    let qualityBadge = '';
+    if (quality) {
+        qualityBadge = `<div class="card-quality-badge">${quality.toUpperCase()}</div>`;
+    }
+
+    let languageBadge = '';
+    if (language) {
+        languageBadge = `<div class="card-language-badge">${language === 'es' ? 'ESP' : 'SUB'}</div>`;
+    }
 
     let cardHTML = `
         <img src="${posterPath}" alt="${title}" class="${isGrid ? 'grid-poster' : 'card-poster'}">
         <div class="${isGrid ? 'grid-rating' : 'card-rating'}">${rating}</div>
+        ${qualityBadge}
+        ${languageBadge}
         <div class="${isGrid ? 'grid-badge' : 'card-badge'}">${type}</div>
         <div class="card-content">
     `;
@@ -5070,6 +5086,8 @@ async function renderModalContent(data, type) {
                         <h2 class="modal-title-new">${title}</h2>
                         <p class="modal-meta-new"><strong data-translate="details.year">${getText('details.year')}</strong> ${(data.release_date || data.first_air_date || '').split('-')[0] || getText('content.notAvailable')}</p>
                         <p class="modal-meta-new"><strong data-translate="details.genre">${getText('details.genre')}</strong> ${genres}</p>
+                        ${firestoreData.display_options?.quality ? `<p class="modal-meta-new"><strong>Calidad:</strong> <span class="modal-quality-tag">${firestoreData.display_options.quality.toUpperCase()}</span></p>` : ''}
+                        ${firestoreData.display_options?.language ? `<p class="modal-meta-new"><strong>Idioma:</strong> <span class="modal-language-tag">${firestoreData.display_options.language === 'es' ? 'Español' : 'Subtitulado'}</span></p>` : ''}
                         <p class="modal-meta-new"><strong data-translate="${type === 'movie' ? 'details.director' : 'details.creator'}">${getText(type === 'movie' ? 'details.director' : 'details.creator')}:</strong> ${director}</p>
                         <p class="modal-meta-new"><strong data-translate="details.cast">${getText('details.cast')}</strong> ${cast}</p>
                     </div>
@@ -5631,10 +5649,15 @@ async function confirmImportWithSections(event) {
         const homeSections = Array.from(document.querySelectorAll('input[name="home-section"]:checked')).map(cb => cb.value);
         const platformSections = Array.from(document.querySelectorAll('input[name="platform-section"]:checked')).map(cb => cb.value);
 
+        const quality = document.querySelector('input[name="quality"]:checked').value;
+        const language = document.querySelector('input[name="language"]:checked').value;
+
         const displayOptions = {
             main_sections: mainSections,
             home_sections: homeSections,
             platforms: platformSections,
+            quality: quality,
+            language: language,
         };
 
         if (isEditMode) {
@@ -6193,6 +6216,8 @@ function showEditContentModal(item) {
     const mainSections = displayOptions.main_sections || [];
     const homeSections = displayOptions.home_sections || [];
     const platformSections = displayOptions.platforms || [];
+    const quality = displayOptions.quality || 'cam';
+    const language = displayOptions.language || 'es';
 
     mainSections.forEach(section => {
         const checkbox = form.querySelector(`input[name="main-section"][value="${section}"]`);
@@ -6208,6 +6233,12 @@ function showEditContentModal(item) {
         const checkbox = form.querySelector(`input[name="platform-section"][value="${section}"]`);
         if (checkbox) checkbox.checked = true;
     });
+
+    const qualityRadio = form.querySelector(`input[name="quality"][value="${quality}"]`);
+    if (qualityRadio) qualityRadio.checked = true;
+
+    const languageRadio = form.querySelector(`input[name="language"][value="${language}"]`);
+    if (languageRadio) languageRadio.checked = true;
 
     document.getElementById('import-options-title').textContent = getText('modal.editDisplayOptions');
     confirmImport.textContent = getText('modal.saveAndContinueButton');

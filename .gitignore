@@ -1,2 +1,5 @@
 # Ignore configuration files with sensitive data
 config.js
+
+# Ignore log files
+*.log
