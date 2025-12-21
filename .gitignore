@@ -1,5 +1,4 @@
 # Ignore configuration files with sensitive data
-js/config.js
 
 # Capacitor files
 dist/
