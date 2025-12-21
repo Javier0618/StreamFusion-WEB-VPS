@@ -1,0 +1,32 @@
+# Ignore configuration files with sensitive data
+js/config.js
+
+# Capacitor files
+dist/
+build/
+.capacitor/
+ios/
+
+# Dependencies
+node_modules
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Cache
+.cache/
+.local/
+
+# Old project structure (migrated to www/)
+# Keeping only www/ for Capacitor
+StreamFusion-Unified.zip	
+ESTRUCTURA_UNIFIQUE_INDEX.txt
+RESUMEN_ARCHIVO_UNIFICADO.md

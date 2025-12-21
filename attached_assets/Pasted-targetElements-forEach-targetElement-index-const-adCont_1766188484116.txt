@@ -1,0 +1,95 @@
+targetElements.forEach((targetElement, index) => {
+          const adContainer = document.createElement("div");
+          adContainer.className = "ad-container";
+          adContainer.id = `ad-container-${section.options.position}-${index}`;
+          adContainer.style.margin = "20px 0";
+          adContainer.style.display = "flex";
+          adContainer.style.justifyContent = "center";
+          adContainer.style.width = "100%";
+          adContainer.style.alignItems = "center";
+
+          // Determine if this is in mobile or desktop section
+          const isMobileContainer =
+            targetElement.closest(".mobile-only-content") !== null;
+
+          // Create iframe for ad script (same as home sections)
+          const iframe = document.createElement("iframe");
+          iframe.style.border = "none";
+          iframe.style.width = "100%";
+          iframe.style.height = "auto";
+          iframe.style.minHeight = "auto";
+          iframe.style.display = "block";
+          iframe.setAttribute("scrolling", "no");
+          iframe.setAttribute("title", "Advertisement");
+
+          // Use srcdoc for script injection
+          iframe.srcdoc = `
+            <html>
+              <head><style>body { margin: 0; overflow: hidden; padding: 0; }</style></head>
+              <body>${section.options.script}</body>
+            </html>
+          `;
+
+          adContainer.appendChild(iframe);
+          adContainer.style.minHeight = "auto";
+          targetElement.parentNode.insertBefore(
+            adContainer,
+            targetElement.nextSibling,
+          );
+
+          let heightResized = false;
+          
+          const resizeIframe = () => {
+            if (heightResized) return;
+            try {
+              const body = iframe.contentWindow?.document?.body;
+              const html = iframe.contentWindow?.document?.documentElement;
+              
+              if (!body || !html) return;
+              
+              const measureHeight = () => {
+                const height = Math.max(
+                  body.scrollHeight,
+                  body.offsetHeight,
+                  html.clientHeight,
+                  html.scrollHeight,
+                  html.offsetHeight,
+                  0,
+                );
+                return height;
+              };
+              
+              let height = measureHeight();
+              if (height > 0) {
+                iframe.style.height = height + "px";
+                
+                // Second measurement in case content is still loading
+                setTimeout(() => {
+                  const newHeight = measureHeight();
+                  if (newHeight > height) {
+                    iframe.style.height = newHeight + "px";
+                  }
+                  heightResized = true;
+                }, 500);
+              }
+            } catch (e) {
+              console.warn("[AD MODAL] Could not resize ad iframe:", e);
+            }
+          };
+          
+          iframe.addEventListener("load", resizeIframe);
+          
+          // Fallback: try resizing after a delay even if load event doesn't fire
+          setTimeout(() => {
+            if (!heightResized) {
+              resizeIframe();
+            }
+          }, 400);
+
+          console.log(
+            `[AD INJECTION] Successfully injected ad in #${adContainer.id} (${isMobileContainer ? "MOBILE" : "DESKTOP"})`,
+          );
+        });
+      }
+    });
+  }

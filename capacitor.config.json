@@ -1,0 +1,27 @@
+{
+  "appId": "stream.fusion",
+  "appName": "StreamFusion",
+  "webDir": "www",
+  "ios": {
+    "contentInset": "automatic"
+  },
+  "android": {
+    "allowMixedContent": true,
+    "webContentsDebuggingEnabled": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "launchAutoHide": true,
+      "backgroundColor": "#1a1a1a",
+      "androidScaleType": "CENTER_CROP",
+      "iosScaleType": "CENTER_CROP",
+      "spinnerStyle": "large",
+      "spinnerColor": "#ff6b00",
+      "showSpinner": true
+    },
+    "ScreenOrientation": {
+      "orientations": ["portrait", "landscape"]
+    }
+  }
+}

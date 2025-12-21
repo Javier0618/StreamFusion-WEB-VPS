@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "1023470476009",
+    "firebase_url": "https://streamfusion-app-default-rtdb.firebaseio.com",
+    "project_id": "streamfusion-app",
+    "storage_bucket": "streamfusion-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1023470476009:android:8c4622f7b238cfb9782e78",
+        "android_client_info": {
+          "package_name": "stream.fusion"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1023470476009-947noh0cug85tjnie655rlvvfq89p14s.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDJDm6Of0VBFsH0hoBEiwcbId69jnG_gKI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1023470476009-71itmjhr7fu8q5lij93iq5bs9l5enl1m.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

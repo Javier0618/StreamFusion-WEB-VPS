@@ -1,0 +1,34 @@
+{
+  "name": "streamfusion-mobile",
+  "version": "1.0.0",
+  "description": "StreamFusion - Aplicación móvil de streaming",
+  "main": "index.js",
+  "scripts": {
+    "dev": "python3 -m http.server 8000 --directory www",
+    "build": "echo 'Build complete'",
+    "cap": "capacitor",
+    "cap:add:ios": "capacitor add ios",
+    "cap:add:android": "capacitor add android",
+    "cap:build": "capacitor build",
+    "cap:copy": "capacitor copy",
+    "cap:open:ios": "capacitor open ios",
+    "cap:open:android": "capacitor open android",
+    "cap:sync": "capacitor sync",
+    "test": "echo \"No tests specified\""
+  },
+  "keywords": [
+    "streaming",
+    "movies",
+    "series",
+    "mobile"
+  ],
+  "author": "StreamFusion",
+  "license": "MIT",
+  "dependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/cli": "^7.4.4",
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/ios": "^8.0.0",
+    "firebase": "^12.7.0"
+  }
+}
