@@ -9,7 +9,5 @@ const firebaseConfig = {
 };
 
 const API_KEY = '32e5e53999e380a0291d66fb304153fe';
-
 const ADMIN_EMAIL = 'javiervelasquez0618@gmail.com';
-
 export { firebaseConfig, API_KEY, ADMIN_EMAIL };
