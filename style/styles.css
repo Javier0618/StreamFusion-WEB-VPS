@@ -156,6 +156,36 @@ img {
   background: #777;
 }
 
+/* Splash Screen */
+.splash-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--primary-color);
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.5s;
+}
+
+.splash-content {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.splash-content img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
 .auth-container {
   position: fixed;
   top: 0;
@@ -1136,7 +1166,6 @@ img {
 }
 
 .modal-close {
-  display: none;
   font-size: 1.5rem;
   cursor: pointer;
   color: var(--text-secondary);
@@ -1221,6 +1250,12 @@ header {
   padding: 2%;
 }
 
+.sfusion-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
 .logo-container {
   display: flex;
   align-items: center;
@@ -1231,6 +1266,10 @@ header {
   height: 35px;
   width: auto;
 }
+
+ .text-logo {
+    width: 50px;
+  }
 
 .logo-text {
   font-size: 1.5rem;
@@ -1978,7 +2017,7 @@ header {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 3000;
+  z-index: 9998;
   backdrop-filter: blur(5px);
 }
 
@@ -3889,7 +3928,7 @@ img.lazy.loaded {
     
     footer {
   display: none;
-	}
+        }
 
   .admin-quick-actions,
   .management-quick-actions {
@@ -4890,6 +4929,14 @@ footer p {
     display: flex;
     gap: 1.5rem;
     padding: 1.5rem;
+  }
+  
+  .text-logo{
+    display: none;
+  }
+  
+  .splash-overlay {
+    display: none !important;
   }
 
   /* Show ad-container in desktop section on desktop screens */
