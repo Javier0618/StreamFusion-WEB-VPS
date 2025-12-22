@@ -1136,6 +1136,7 @@ img {
 }
 
 .modal-close {
+  display: none;
   font-size: 1.5rem;
   cursor: pointer;
   color: var(--text-secondary);
@@ -2423,7 +2424,7 @@ header {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
   font-size: 1.2rem;
@@ -4008,7 +4009,7 @@ img.lazy.loaded {
     width: 36px;
     height: 36px;
     border-radius: 50%;
-    display: flex;
+    display: none;
     align-items: center;
     justify-content: center;
     font-size: 1.2rem;
