@@ -58,7 +58,8 @@ const translations = {
     "nav.movies": "Películas",
     "nav.series": "Series",
     "nav.animes": "Animes",
-    "nav.doramas": "Doramas",
+    "bottomNav.doramas": "Doramas",
+    "nav.tv": "TV",
     "search.placeholder": "Buscar títulos...",
     "home.exploreByCategory": "Explorar por Categoría",
     "home.inTheaters": "En Estreno/Emisión",
@@ -210,7 +211,7 @@ const translations = {
     "bottomNav.movies": "Películas",
     "bottomNav.series": "Series",
     "bottomNav.animes": "Animes",
-    "bottomNav.doramas": "Doramas",
+    "bottomNav.tv": "TV",
     "details.youMightLike": "También te podría gustar",
     "details.season": "Temporada",
     "details.noSeasons": "No se encontraron temporadas.",
@@ -306,6 +307,11 @@ const translations = {
     "admin.user": "Usuario",
     "admin.never": "Nunca",
     "admin.noAccess": "No tienes permisos para acceder a este panel.",
+    "admin.splashTab": "Splash",
+    "admin.splashConfigTitle": "Configuración de Splash",
+    "admin.splashEnabled": "Activar Splash Screen",
+    "admin.splashImageUrl": "URL de la Imagen",
+    "admin.splashDuration": "Duración (segundos)",
     "admin.unknownUser": "Usuario desconocido",
     "admin.statusLabel": "Estado:",
     "admin.statusConnected": "Conectado",
@@ -427,7 +433,8 @@ const translations = {
     "nav.movies": "Movies",
     "nav.series": "Series",
     "nav.animes": "Animes",
-    "nav.doramas": "Doramas",
+    "bottomNav.doramas": "Doramas",
+    "nav.tv": "TV",
     "search.placeholder": "Search titles...",
     "home.exploreByCategory": "Explore by Category",
     "home.inTheaters": "Now Playing/Airing",
@@ -544,7 +551,7 @@ const translations = {
     "bottomNav.movies": "Movies",
     "bottomNav.series": "Series",
     "bottomNav.animes": "Animes",
-    "bottomNav.doramas": "Doramas",
+    "bottomNav.tv": "TV",
     "details.youMightLike": "You might also like",
     "details.season": "Season",
     "details.noSeasons": "No seasons found.",
@@ -638,6 +645,11 @@ const translations = {
     "admin.user": "User",
     "admin.never": "Never",
     "admin.noAccess": "You do not have permission to access this panel.",
+    "admin.splashTab": "Splash",
+    "admin.splashConfigTitle": "Splash Configuration",
+    "admin.splashEnabled": "Enable Splash Screen",
+    "admin.splashImageUrl": "Image URL",
+    "admin.splashDuration": "Duration (seconds)",
     "admin.unknownUser": "Unknown user",
     "admin.statusLabel": "Status:",
     "admin.statusConnected": "Connected",
@@ -1126,19 +1138,71 @@ document.addEventListener("DOMContentLoaded", () => {
   initApp();
 });
 
+// Show Splash Screen on Load
+async function loadSplashConfig() {
+  const splashScreen = document.getElementById("splash-screen");
+  const splashImage = document.getElementById("splash-image");
+  
+  try {
+    const splashDoc = await getDoc(doc(db, "web_config", "splash"));
+    
+    if (splashDoc.exists()) {
+      const config = splashDoc.data();
+      if (config.enabled && splashImage) {
+        // Set the image
+        splashImage.src = config.imageUrl;
+        
+        // Hide after specified duration (convert to milliseconds)
+        const duration = (config.duration || 5) * 1000;
+        return duration; // Return the duration so we can wait for it
+      } else if (!config.enabled && splashScreen) {
+        // If splash is disabled, hide it immediately
+        splashScreen.style.display = "none";
+        return 0;
+      }
+    } else if (splashScreen) {
+      // If no config exists, hide splash
+      splashScreen.style.display = "none";
+      return 0;
+    }
+  } catch (error) {
+    console.error("Error loading splash config on startup:", error);
+    if (splashScreen) splashScreen.style.display = "none";
+    return 0;
+  }
+  return 0;
+}
+
 // Main initialization function
 async function initApp() {
+  // Start splash config and web loading in PARALLEL
+  const splashPromise = loadSplashConfig();
+  
+  const webLoadingPromise = (async () => {
+    try {
+      await loadWebSettings();
+      applyStaticTranslations();
+      initEventListeners();
+      initAuth();
+    } catch (error) {
+      console.error("Error initializing app:", error);
+    }
+  })();
+  
+  // Wait for splash config to complete
+  const splashDuration = await splashPromise;
+  
+  // Show spinner while waiting for splash duration
   showSpinner();
-  try {
-    await loadWebSettings();
-    applyStaticTranslations();
-    initEventListeners();
-    initAuth();
-  } catch (error) {
-    console.error("Error initializing app:", error);
-  } finally {
-    hideSpinner();
+  
+  if (splashDuration > 0) {
+    await new Promise(resolve => setTimeout(resolve, splashDuration));
+    document.getElementById("splash-screen").style.display = "none";
   }
+  
+  // Wait for web loading to complete if it's still pending
+  await webLoadingPromise;
+  hideSpinner();
 }
 
 function handleInitialLoadURL() {
@@ -1382,6 +1446,7 @@ function updateUIForLoggedInUser() {
 
     // Admin Panel link (if admin)
     if (isAdmin) {
+      console.log("User is admin, adding admin panel link");
       const adminPanelLinkItem = document.createElement("div");
       adminPanelLinkItem.className = "profile-dropdown-item";
       adminPanelLinkItem.id = "admin-panel-link";
@@ -1842,6 +1907,8 @@ function initEventListeners() {
           loadHomeSections();
         } else if (tabName === "modal-sections") {
           loadModalSections();
+        } else if (tabName === "splash") {
+          loadSplashConfigForm();
         }
       }
     });
@@ -1879,6 +1946,8 @@ function initEventListeners() {
           loadHomeSections();
         } else if (tabName === "modal-sections") {
           loadModalSections();
+        } else if (tabName === "splash") {
+          loadSplashConfigForm();
         }
       }
     });
@@ -4040,9 +4109,81 @@ function renderConnectedUsersGrid(users) {
 function resetServices() {
   currentService = null;
   serviceItems.forEach((item) => item.classList.remove("active"));
-  navigateToView("home"); // Just navigate home, which will re-render everything correctly
+  window.navigateToView("home"); // Just navigate home, which will re-render everything correctly
   servicesBackBtn.style.display = "none";
 }
+
+// Load Splash Config Form
+async function loadSplashConfigForm() {
+  const splashForm = document.getElementById("splash-config-form");
+  if (!splashForm) return;
+
+  try {
+    const splashDoc = await getDoc(doc(db, "web_config", "splash"));
+    if (splashDoc.exists()) {
+      const config = splashDoc.data();
+      document.getElementById("splash-enabled").checked = config.enabled || false;
+      document.getElementById("splash-image-url").value = config.imageUrl || "";
+      document.getElementById("splash-duration").value = config.duration || 5;
+    }
+  } catch (error) {
+    console.error("Error loading splash config for form:", error);
+  }
+}
+
+// Global initialization for Splash Config
+function initSplashConfig() {
+  const splashForm = document.getElementById("splash-config-form");
+  if (!splashForm) return;
+
+  splashForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!isAdmin) {
+      alert("No tienes permisos de administrador.");
+      return;
+    }
+
+    const enabled = document.getElementById("splash-enabled").checked;
+    const imageUrl = document.getElementById("splash-image-url").value.trim();
+    const duration = parseInt(document.getElementById("splash-duration").value);
+
+    if (!imageUrl) {
+      alert("Por favor, introduce una URL de imagen.");
+      return;
+    }
+
+    try {
+      showSpinner();
+      await setDoc(doc(db, "web_config", "splash"), {
+        enabled,
+        imageUrl,
+        duration,
+        updatedAt: serverTimestamp(),
+        updatedBy: currentUser.email,
+      });
+      showMessageModal(
+        getText("modal.successTitle"),
+        "Configuración de Splash guardada correctamente.",
+        "success"
+      );
+    } catch (error) {
+      console.error("Error saving splash config:", error);
+      showMessageModal(
+        getText("modal.errorTitle"),
+        "Error al guardar la configuración: " + error.message,
+        "error"
+      );
+    } finally {
+      hideSpinner();
+    }
+  });
+
+  // Load initial splash config
+  loadSplashConfigForm();
+}
+
+// Call splash config init
+initSplashConfig();
 
 // Navigate to a specific view
 window.navigateToView = async function navigateToView(view) {
@@ -4084,6 +4225,9 @@ window.navigateToView = async function navigateToView(view) {
         series: "series-view",
         animes: "animes-view",
         doramas: "doramas-view",
+        search: "search-view",
+        "genre-results": "genre-results-view",
+        "en-estreno": "en-estreno-view",
       };
       const targetId = viewToIdMap[view];
       if (targetId) {
