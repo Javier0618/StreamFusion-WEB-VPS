@@ -9,8 +9,10 @@ ios/
 
 # Dependencies
 node_modules
+StreamFusion-Unified.zip
 
 # IDE
+StreamFusion-Unified.zip
 .vscode/
 .idea/
 *.swp

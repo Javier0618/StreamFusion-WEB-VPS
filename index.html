@@ -36,7 +36,7 @@
       name="twitter:description"
       content="Plataforma gratuita de streaming con películas, series, animes y doramas."
     />
-    <link rel="canonical" href="https://themoviedbscraper.blogspot.com/" />
+    <link rel="canonical" href="https://streamfusion.top/" />
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"
@@ -70,6 +70,13 @@
     <!-- Loading spinner -->
     <div class="spinner-container" id="spinner-container">
       <div class="spinner"></div>
+    </div>
+
+    <!-- Splash Screen Overlay -->
+    <div id="splash-screen" class="splash-overlay">
+      <div class="splash-content">
+        <img id="splash-image" src="https://i.ibb.co/zWmGMFdb/Splash-SF.jpg" alt="Splash" />
+      </div>
     </div>
 
     <!-- Authentication Container (Now a Modal) -->
@@ -314,6 +321,7 @@
 
     <!-- Header -->
     <header id="header">
+      <div class="sfusion-logo">
       <div class="logo-container">
         <img
           src="https://i.ibb.co/tMTTfz8g/SFusion-Logo.png"
@@ -321,8 +329,12 @@
         />
         <!-- This is the only h1 on the page for SEO -->
         <h1 class="logo-text">StreamFusion</h1>
+        </div>
+        <div class="text-logo">
+        <img src="https://i.ibb.co/KjDq7Qwk/SFusion.png" alt="SFusion"/>
+        </div>
       </div>
-
+        
       <nav class="nav-links" aria-label="Navegación principal">
         <a
           href="#"
@@ -359,8 +371,14 @@
           data-translate="nav.doramas"
           >Doramas</a
         >
-        <a href="go:TV" class="nav-link" target="_blank" data-translate="nav.tv"
-          >TV</a
+        <a
+          href="#"
+          class="nav-link"
+          data-section="splash-config"
+          data-translate="admin.splashTab"
+          style="display: none"
+          id="nav-splash-config"
+          >Splash</a
         >
       </nav>
 
@@ -1151,10 +1169,7 @@
             </div>
             <span data-translate="profile.messages">Mensajes</span>
           </div>
-          <div
-            class="quick-action-card"
-            data-tab="settings"
-          >
+          <div class="quick-action-card" data-tab="settings">
             <div
               class="quick-action-icon"
               style="
@@ -1692,6 +1707,17 @@
             </div>
             <span>Modal</span>
           </div>
+          <div class="management-quick-card" data-tab="splash">
+            <div
+              class="management-quick-icon"
+              style="
+                background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+              "
+            >
+              <i class="fas fa-image"></i>
+            </div>
+            <span data-translate="admin.splashTab">Splash</span>
+          </div>
         </div>
 
         <div class="admin-tabs" id="management-tabs" style="display: none">
@@ -1718,6 +1744,13 @@
           </div>
           <div class="admin-tab" data-tab="modal-sections">
             Secciones del modal
+          </div>
+          <div
+            class="admin-tab"
+            data-tab="splash"
+            data-translate="admin.splashTab"
+          >
+            Splash
           </div>
         </div>
 
@@ -1842,6 +1875,106 @@
             >
               Agregar Nueva Sección
             </button>
+          </div>
+          <!-- Splash Configuration Section -->
+          <div class="admin-section" id="splash-section" style="display: none">
+            <h3 data-translate="admin.splashConfigTitle">
+              Configuración de Splash
+            </h3>
+            <div
+              style="
+                background: var(--card-bg);
+                padding: 30px;
+                border-radius: 16px;
+                max-width: 600px;
+              "
+            >
+              <form id="splash-config-form" class="admin-form">
+                <div
+                  class="form-group"
+                  style="
+                    display: flex;
+                    align-items: center;
+                    gap: 15px;
+                    margin-bottom: 25px;
+                  "
+                >
+                  <input
+                    type="checkbox"
+                    id="splash-enabled"
+                    style="width: 25px; height: 25px; cursor: pointer"
+                  />
+                  <label
+                    for="splash-enabled"
+                    data-translate="admin.splashEnabled"
+                    style="margin-bottom: 0; font-size: 1.1rem; cursor: pointer"
+                    >Activar Splash Screen</label
+                  >
+                </div>
+                <div class="form-group" style="margin-bottom: 25px">
+                  <label
+                    data-translate="admin.splashImageUrl"
+                    style="
+                      display: block;
+                      margin-bottom: 10px;
+                      font-weight: 600;
+                    "
+                    >URL de la Imagen</label
+                  >
+                  <input
+                    type="text"
+                    id="splash-image-url"
+                    class="form-input"
+                    placeholder="https://ejemplo.com/imagen.jpg"
+                    required
+                    style="
+                      width: 100%;
+                      background: #333;
+                      border: 1px solid #444;
+                    "
+                  />
+                </div>
+                <div class="form-group" style="margin-bottom: 30px">
+                  <label
+                    data-translate="admin.splashDuration"
+                    style="
+                      display: block;
+                      margin-bottom: 10px;
+                      font-weight: 600;
+                    "
+                    >Duración (segundos)</label
+                  >
+                  <input
+                    type="number"
+                    id="splash-duration"
+                    class="form-input"
+                    min="1"
+                    max="60"
+                    value="5"
+                    required
+                    style="
+                      width: 100%;
+                      background: #333;
+                      border: 1px solid #444;
+                    "
+                  />
+                </div>
+                <button
+                  type="submit"
+                  class="auth-btn"
+                  data-translate="modal.saveButton"
+                  style="
+                    width: 100%;
+                    padding: 15px;
+                    font-size: 1.1rem;
+                    background: var(--secondary-color);
+                    color: white;
+                  "
+                >
+                  Guardar Configuración
+                </button>
+              </form>
+            </div>
           </div>
         </div>
       </div>
@@ -2698,16 +2831,16 @@
         <i class="fa-solid fa-a"></i>
         <span data-translate="bottomNav.animes">Animes</span>
       </a>
-      <a href="go:TV" target="_blank" class="bottom-nav-item-tv">
-        <i class="fas fa-tv"></i>
-        <span data-translate="bottomNav.tv">TV</span>
+      <a href="#" class="bottom-nav-item" data-section="doramas">
+        <i class="fas fa-heart"></i>
+        <span data-translate="bottomNav.doramas">Doramas</span>
       </a>
     </div>
     <!-- SortableJS for drag-and-drop -->
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
-    <script type="module" src="js/config.js"></script>
-    <script type="module" src="js/script.js"></script>
-    <script type="module" src="js/script.block.js"></script>
+    <script type="module" src="https://sfusion.netlify.app/js/config.js" crossorigin="anonymous"></script>
+    <script type="module" src="https://sfusion.netlify.app/js/script.js" crossorigin="anonymous"></script>
+    <script type="module" src="https://sfusion.netlify.app/js/script.block.js" crossorigin="anonymous"></script>
 
     <!-- Trailer Modal -->
     <div id="trailer-modal" class="modal-overlay" style="display: none">

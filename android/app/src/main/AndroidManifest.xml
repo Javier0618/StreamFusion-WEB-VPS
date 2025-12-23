@@ -15,7 +15,8 @@
             android:label="@string/title_activity_main"
             android:theme="@style/AppTheme.NoActionBarLaunch"
             android:launchMode="singleTask"
-            android:exported="true">
+            android:exported="true"
+            android:screenOrientation="portrait"> <!-- Bloqueo inicial en vertical -->
 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -34,7 +35,6 @@
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
 
-        <!-- Firebase Cloud Messaging Service -->
         <service
             android:name=".StreamFusionMessagingService"
             android:exported="false">
@@ -44,7 +44,6 @@
         </service>
     </application>
 
-    <!-- Permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>
