@@ -2,7 +2,6 @@
  * Mobile Video Rotation Handler
  * Detecta rotación y entra fullscreen automáticamente
  */
-
 import { ScreenOrientation } from "https://cdn.jsdelivr.net/npm/@capacitor/screen-orientation@8.0.0/+esm";
 import { StatusBar } from "https://cdn.jsdelivr.net/npm/@capacitor/status-bar@5.0.0/+esm";
 
