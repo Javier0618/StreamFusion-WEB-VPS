@@ -4954,21 +4954,29 @@ footer p {
   .detail-view-movie .desktop-player-section {
     display: flex;
     justify-content: center;
+    padding: 2rem 2rem 2rem 2rem;
   }
 
   .detail-view-movie .video-container-new {
-    max-width: 100%;
+    max-width: 80%;
+    width: 80%;
+    border-radius: 16px;
+    overflow: hidden;
   }
 
   /* ---- SERIES LAYOUT ---- */
   .detail-view-series .desktop-player-section {
     display: flex;
     gap: 0;
+    padding: 2rem 2rem 2rem 2rem;
   }
 
   .detail-view-series .video-container-new {
-    flex: 0 0 65%;
-    max-width: 65%;
+    flex: 0 0 calc(65% - 1.5rem);
+    max-width: calc(65% - 1.5rem);
+    margin-right: 1.5rem;
+    border-radius: 16px;
+    overflow: hidden;
   }
 
   .detail-view-series .desktop-seasons-panel {
