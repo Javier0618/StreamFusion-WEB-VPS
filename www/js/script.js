@@ -9202,7 +9202,15 @@ const swipeNavigation = {
     this.updateCurrentSection();
   },
 
+// Busca el objeto swipeNavigation y actualiza estos métodos:
+
   handleTouchStart(e) {
+    // NUEVA COMPROBACIÓN: Si el modal está abierto, ignorar el gesto por completo
+    if (document.body.classList.contains('modal-open')) {
+      this.isTouchingCategory = true; // Usamos este flag para abortar el gesto
+      return;
+    }
+
     // Solo registrar si el usuario toca con un dedo
     if (e.touches.length !== 1) return;
 
@@ -9212,38 +9220,16 @@ const swipeNavigation = {
     // No activar si el toque comienza en el menú inferior (bottom-nav)
     const bottomNav = document.querySelector(".bottom-nav");
     if (bottomNav && bottomNav.contains(e.target)) {
-      this.isTouchingCategory = false;
+      this.isTouchingCategory = true; // Bloquear
       return;
     }
 
-    // No activar si el toque comienza en el hero
+    // No activar si el toque comienza en el hero o sliders
     const heroElement = e.target.closest(".hero, .hero-slide, .hero-container");
-    if (heroElement) {
-      this.isTouchingCategory = true;
-      return;
-    }
-
-    // EXCLUIR LA SECCIÓN DE CATEGORÍAS COMPLETAMENTE
-    // Verificar tanto la sección como el contenedor
-    const categoriesSection = e.target.closest(".categories-section");
-    const categoriesContainer = e.target.closest(".categories-container");
-    if (categoriesSection || categoriesContainer) {
-      this.isTouchingCategory = true;
-      return;
-    }
-
-    // No activar si el toque comienza en un slider de contenido
-    const contentSlider = e.target.closest(
-      ".content-slider, .slider-container, .content-row",
-    );
-    if (contentSlider) {
-      this.isTouchingCategory = true;
-      return;
-    }
-
-    // No activar si tocamos una categoría individual (elemento con clase category-item)
-    const categoryItem = e.target.closest(".category-item");
-    if (categoryItem) {
+    const categoriesSection = e.target.closest(".categories-section, .categories-container");
+    const contentSlider = e.target.closest(".content-slider, .slider-container, .content-row");
+    
+    if (heroElement || categoriesSection || contentSlider) {
       this.isTouchingCategory = true;
       return;
     }
@@ -9256,22 +9242,9 @@ const swipeNavigation = {
   handleTouchEnd(e) {
     if (e.changedTouches.length !== 1) return;
 
-    // Si estábamos tocando una categoría o hero, no hacer swipe
-    if (this.isTouchingCategory) {
+    // Si el modal está abierto o tocamos un elemento excluido, abortar
+    if (this.isTouchingCategory || document.body.classList.contains('modal-open')) {
       this.isTouchingCategory = false;
-      return;
-    }
-
-    // También verificar si el toque termina dentro del hero
-    const heroElement = e.target.closest(".hero, .hero-slide, .hero-container");
-    if (heroElement) {
-      return;
-    }
-
-    // EXCLUIR SI EL TOQUE TERMINA EN LA SECCIÓN DE CATEGORÍAS
-    const categoriesSection = e.target.closest(".categories-section");
-    const categoriesContainer = e.target.closest(".categories-container");
-    if (categoriesSection || categoriesContainer) {
       return;
     }
 
