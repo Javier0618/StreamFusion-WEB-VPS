@@ -3,8 +3,5 @@
   [headers.values]
     Access-Control-Allow-Origin = "*"
     Access-Control-Allow-Methods = "GET, POST, OPTIONS"
-<<<<<<< HEAD
     Access-Control-Allow-Headers = "Content-Type"
-=======
     Access-Control-Allow-Headers = "Content-Type"
->>>>>>> 8b65e7ad3db7d18dede81dc45cecd9149938acf6
