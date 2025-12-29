@@ -1585,13 +1585,27 @@ function initEventListeners() {
     }, 200),
   );
 
-  // Search functionality
-  searchBtn.addEventListener("click", toggleSearch);
-  searchInput.addEventListener("keyup", function (e) {
-    if (e.key === "Enter") {
+searchBtn.addEventListener("click", toggleSearch);
+
+searchInput.addEventListener("input", function() {
+  // Limpiamos el temporizador cada vez que el usuario escribe
+  clearTimeout(searchTimeout);
+  
+  // Si hay texto, esperamos 500ms antes de buscar para no trabar el cursor
+  searchTimeout = setTimeout(() => {
+    if (searchInput.value.trim().length > 2) {
       handleSearch();
     }
-  });
+  }, 500); 
+});
+
+searchInput.addEventListener("keyup", function (e) {
+  if (e.key === "Enter") {
+    clearTimeout(searchTimeout); // Ejecutar búsqueda inmediata al dar Enter
+    handleSearch();
+    searchInput.blur(); // Cerrar teclado
+  }
+});
   searchInput.addEventListener("input", function () {
     if (document.activeElement === searchInput && searchInput.value.trim()) {
       handleSearch();
@@ -5662,10 +5676,24 @@ function addHeroSwipeSupport(heroElement) {
   }
 }
 
+let searchTimeout;
+
+// 2. Función toggleSearch mejorada
 function toggleSearch() {
-  searchInput.classList.toggle("active");
-  if (searchInput.classList.contains("active")) {
-    setTimeout(() => searchInput.focus(), 300);
+  const isActive = searchInput.classList.contains("active");
+  
+  if (!isActive) {
+    searchInput.classList.add("active");
+    // Forzamos el foco después de un breve delay para que la animación no se rompa
+    setTimeout(() => {
+      searchInput.focus();
+    }, 300);
+  } else {
+    if (searchInput.value.trim() !== "") {
+      handleSearch();
+    } else {
+      searchInput.classList.remove("active");
+    }
   }
 }
 
@@ -9373,4 +9401,3 @@ if (document.readyState === "loading") {
     swipeNavigation.init();
   }, 500);
 }
-
