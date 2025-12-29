@@ -1585,13 +1585,27 @@ function initEventListeners() {
     }, 200),
   );
 
-  // Search functionality
-  searchBtn.addEventListener("click", toggleSearch);
-  searchInput.addEventListener("keyup", function (e) {
-    if (e.key === "Enter") {
+searchBtn.addEventListener("click", toggleSearch);
+
+searchInput.addEventListener("input", function() {
+  // Limpiamos el temporizador cada vez que el usuario escribe
+  clearTimeout(searchTimeout);
+  
+  // Si hay texto, esperamos 500ms antes de buscar para no trabar el cursor
+  searchTimeout = setTimeout(() => {
+    if (searchInput.value.trim().length > 2) {
       handleSearch();
     }
-  });
+  }, 500); 
+});
+
+searchInput.addEventListener("keyup", function (e) {
+  if (e.key === "Enter") {
+    clearTimeout(searchTimeout); // Ejecutar búsqueda inmediata al dar Enter
+    handleSearch();
+    searchInput.blur(); // Cerrar teclado
+  }
+});
   searchInput.addEventListener("input", function () {
     if (document.activeElement === searchInput && searchInput.value.trim()) {
       handleSearch();
@@ -5662,17 +5676,19 @@ function addHeroSwipeSupport(heroElement) {
   }
 }
 
+let searchTimeout;
+
+// 2. Función toggleSearch mejorada
 function toggleSearch() {
   const isActive = searchInput.classList.contains("active");
   
   if (!isActive) {
     searchInput.classList.add("active");
-    // Esperamos un momento a que la transición de CSS inicie antes de dar foco
+    // Forzamos el foco después de un breve delay para que la animación no se rompa
     setTimeout(() => {
       searchInput.focus();
-    }, 100);
+    }, 300);
   } else {
-    // Si ya está activo y tiene texto, buscamos. Si está vacío, cerramos.
     if (searchInput.value.trim() !== "") {
       handleSearch();
     } else {
@@ -5680,23 +5696,6 @@ function toggleSearch() {
     }
   }
 }
-
-// 2. Crea una versión "debounced" de la búsqueda para evitar que el texto se escriba mal
-const debouncedSearch = debounce(() => {
-  if (searchInput.value.trim().length > 2) {
-    handleSearch();
-  }
-}, 500); // 500ms de espera tras dejar de escribir
-
-// 3. Actualiza los event listeners del searchInput
-searchInput.addEventListener("keyup", function (e) {
-  if (e.key === "Enter") {
-    handleSearch();
-    searchInput.blur(); // Cierra el teclado en móviles
-  }
-});
-
-searchInput.addEventListener("input", debouncedSearch);
 
 // Handle search
 function handleSearch() {
