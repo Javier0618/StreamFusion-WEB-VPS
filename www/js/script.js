@@ -5663,11 +5663,40 @@ function addHeroSwipeSupport(heroElement) {
 }
 
 function toggleSearch() {
-  searchInput.classList.toggle("active");
-  if (searchInput.classList.contains("active")) {
-    setTimeout(() => searchInput.focus(), 300);
+  const isActive = searchInput.classList.contains("active");
+  
+  if (!isActive) {
+    searchInput.classList.add("active");
+    // Esperamos un momento a que la transición de CSS inicie antes de dar foco
+    setTimeout(() => {
+      searchInput.focus();
+    }, 100);
+  } else {
+    // Si ya está activo y tiene texto, buscamos. Si está vacío, cerramos.
+    if (searchInput.value.trim() !== "") {
+      handleSearch();
+    } else {
+      searchInput.classList.remove("active");
+    }
   }
 }
+
+// 2. Crea una versión "debounced" de la búsqueda para evitar que el texto se escriba mal
+const debouncedSearch = debounce(() => {
+  if (searchInput.value.trim().length > 2) {
+    handleSearch();
+  }
+}, 500); // 500ms de espera tras dejar de escribir
+
+// 3. Actualiza los event listeners del searchInput
+searchInput.addEventListener("keyup", function (e) {
+  if (e.key === "Enter") {
+    handleSearch();
+    searchInput.blur(); // Cierra el teclado en móviles
+  }
+});
+
+searchInput.addEventListener("input", debouncedSearch);
 
 // Handle search
 function handleSearch() {
