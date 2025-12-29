@@ -1318,21 +1318,28 @@ header {
 }
 
 .search-input {
-  background-color: rgba(0, 0, 0, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background-color: rgba(0, 0, 0, 0.8); /* Más opaco para mejor visibilidad */
+  border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 20px;
   padding: 0.5rem 2.5rem 0.5rem 1rem;
   color: var(--text-color);
-  width: 0;
+  
+  /* CAMBIOS AQUÍ: */
+  width: 40px; /* Empezamos con un ancho mínimo en lugar de 0 */
   opacity: 0;
-  transition: width var(--transition-speed), opacity var(--transition-speed);
+  visibility: hidden; /* Evita que el teclado lo detecte si está oculto */
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s, visibility 0.3s;
+  pointer-events: none;
 }
 
 .search-input.active {
-  width: 200px;
+  width: 220px; /* Un poco más ancho */
   opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
 }
 
+/* Asegúrate de que el botón de la lupa esté siempre por encima */
 .search-btn {
   color: var(--text-color);
   font-size: 1.2rem;
@@ -1340,6 +1347,9 @@ header {
   right: 10px;
   top: 50%;
   transform: translateY(-50%);
+  z-index: 1001; /* Un nivel por encima del input */
+  cursor: pointer;
+  padding: 5px; /* Área de clic más grande */
 }
 
 .menu-toggle {
