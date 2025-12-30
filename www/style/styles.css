@@ -1313,43 +1313,52 @@ header {
   gap: 0.8rem;
 }
 
+/* Mejora del contenedor de búsqueda */
 .search-container {
-  position: relative;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    min-width: 40px;
+    height: 40px;
 }
 
 .search-input {
-  background-color: rgba(0, 0, 0, 0.8); /* Más opaco para mejor visibilidad */
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 20px;
-  padding: 0.5rem 2.5rem 0.5rem 1rem;
-  color: var(--text-color);
-  
-  /* CAMBIOS AQUÍ: */
-  width: 40px; /* Empezamos con un ancho mínimo en lugar de 0 */
-  opacity: 0;
-  visibility: hidden; /* Evita que el teclado lo detecte si está oculto */
-  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s, visibility 0.3s;
-  pointer-events: none;
+    background-color: rgba(0, 0, 0, 0.9);
+    border: 1px solid var(--secondary-color);
+    border-radius: 20px;
+    padding: 0.5rem 1rem 0.5rem 2.5rem; /* Ajuste de padding para la lupa */
+    color: var(--text-color);
+    
+    /* CAMBIO CLAVE: No usar width 0 */
+    width: 40px; 
+    opacity: 0;
+    pointer-events: none;
+    transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s;
+    position: absolute;
+    right: 0;
+    z-index: 1000;
 }
 
 .search-input.active {
-  width: 220px; /* Un poco más ancho */
-  opacity: 1;
-  visibility: visible;
-  pointer-events: auto;
+    width: 250px; /* Un poco más ancho para móviles */
+    opacity: 1;
+    pointer-events: auto;
 }
 
-/* Asegúrate de que el botón de la lupa esté siempre por encima */
 .search-btn {
-  color: var(--text-color);
-  font-size: 1.2rem;
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 1001; /* Un nivel por encima del input */
-  cursor: pointer;
-  padding: 5px; /* Área de clic más grande */
+    color: var(--text-color);
+    font-size: 1.4rem;
+    position: absolute;
+    right: 0;
+    width: 44px; /* Área de toque más grande según estándares de Google */
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1001;
+    cursor: pointer;
+    background: transparent;
 }
 
 .menu-toggle {
