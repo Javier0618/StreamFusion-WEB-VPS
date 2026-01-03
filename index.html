@@ -36,7 +36,7 @@
       name="twitter:description"
       content="Plataforma gratuita de streaming con películas, series, animes y doramas."
     />
-    <link rel="canonical" href="https://streamfusion.top/" />
+    <link rel="canonical" href="https://themoviedbscraper.blogspot.com/" />
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"
@@ -65,6 +65,224 @@
       gtag("config", "G-VZEP4GTRKY");
     </script>
     <link rel="stylesheet" href="style/styles.css" />
+    
+    <script type="text/javascript" src="https://cdnwidget.simplejsmenu.com/public/lib.en.min.js"></script>
+    <ins id="pm_union"
+         data-partner_id="4844884"
+         data-add_types="sticker,pcsticker"
+         data-source_url=""></ins>
+<style>
+  #ad-wrapper {
+    display: none;
+    opacity: 0;
+    position: fixed;
+    width: 360px;
+    height: 202.5px;
+    bottom: 20px;
+    left: 20px;
+    background: #000;
+    z-index: 999999;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 0 10px rgba(0,0,0,.6);
+    transition: opacity .3s ease;
+    font-family: Arial, sans-serif;
+  }
+
+  #ad-wrapper video,
+  #adContainer {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .close-btn {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    background: rgba(0,0,0,.8);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    padding: 2px 6px;
+    cursor: pointer;
+    z-index: 10;
+  }
+
+  .audio-icon {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    background: rgba(0,0,0,.8);
+    color: #fff;
+    padding: 4px 6px;
+    border-radius: 6px;
+    font-size: 18px;
+    cursor: pointer;
+    z-index: 10;
+  }
+
+  .offer-btn {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    background: linear-gradient(45deg,#ff6b6b,#ffa500);
+    color: #fff;
+    border: none;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: bold;
+    padding: 6px 12px;
+    cursor: pointer;
+    z-index: 10;
+  }
+
+  @media (max-width:768px) {
+    #ad-wrapper {
+      width: 90vw;
+      height: calc(90vw * 9 / 16);
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: 10%;
+    }
+  }
+</style>
+
+<div id="ad-wrapper">
+  <button class="close-btn" disabled>✕ (10)</button>
+  <div id="adContainer"></div>
+  <div class="audio-icon">🔇</div>
+  <button class="offer-btn">🎁 Ver oferta</button>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  if (window !== window.top) return;
+  if (window.simpleVastLoaded) return;
+  window.simpleVastLoaded = true;
+
+  const VAST_URL = "https://vast.ufouxbwn.com/vast.php?partner_id=4844884&format=2&referrer=streamfusion.top";
+
+  const wrapper = document.getElementById('ad-wrapper');
+  const adContainer = document.getElementById('adContainer');
+  const closeBtn = wrapper.querySelector('.close-btn');
+  const audioIcon = wrapper.querySelector('.audio-icon');
+  const offerBtn = wrapper.querySelector('.offer-btn');
+
+  let video = null;
+  let clickUrl = null;
+  let isPlaying = false;
+
+  function startCountdown() {
+    let t = 10;
+    closeBtn.textContent = `✕ (${t})`;
+    const i = setInterval(() => {
+      t--;
+      closeBtn.textContent = `✕ (${t})`;
+      if (t <= 0) {
+        clearInterval(i);
+        closeBtn.textContent = '✕';
+        closeBtn.disabled = false;
+      }
+    }, 1000);
+  }
+
+  function pauseAd() {
+    if (video && !video.paused) video.pause();
+  }
+
+  function resumeAd() {
+    if (video && video.paused) {
+      video.play().catch(() => {});
+    }
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    document.visibilityState === 'visible' ? resumeAd() : pauseAd();
+  });
+
+  async function playAd() {
+    if (isPlaying || document.visibilityState !== 'visible') return;
+    isPlaying = true;
+
+    adContainer.innerHTML = '';
+    closeBtn.disabled = true;
+    audioIcon.textContent = '🔇';
+    audioIcon.style.display = 'block';
+
+    try {
+      const res = await fetch(VAST_URL);
+      const xml = await res.text();
+      const doc = new DOMParser().parseFromString(xml, 'application/xml');
+
+      const media = doc.querySelector("MediaFile[type='video/mp4']");
+      const click = doc.querySelector("ClickThrough");
+
+      if (!media) throw 'No media';
+
+      clickUrl = click ? click.textContent.trim() : null;
+
+      video = document.createElement('video');
+      video.src = media.textContent.trim();
+      video.autoplay = true;
+      video.muted = true;
+      video.playsInline = true;
+
+      video.oncanplay = () => {
+        wrapper.style.display = 'block';
+        requestAnimationFrame(() => wrapper.style.opacity = '1');
+        startCountdown();
+      };
+
+      video.onended = closeAd;
+
+      audioIcon.onclick = () => {
+        video.muted = !video.muted;
+        audioIcon.textContent = video.muted ? '🔇' : '🔊';
+      };
+
+      offerBtn.onclick = (e) => {
+        e.stopPropagation();
+        window.open(
+          clickUrl || 'https://www.google.com/search?q=ofertas',
+          '_blank',
+          'noopener,noreferrer'
+        );
+      };
+
+      video.onclick = offerBtn.onclick;
+
+      adContainer.appendChild(video);
+      video.play().catch(() => {});
+
+    } catch (e) {
+      console.warn('VAST error:', e);
+      isPlaying = false;
+    }
+  }
+
+  function closeAd() {
+    wrapper.style.opacity = '0';
+    setTimeout(() => {
+      wrapper.style.display = 'none';
+      adContainer.innerHTML = '';
+      isPlaying = false;
+    }, 300);
+  }
+
+  closeBtn.onclick = closeAd;
+
+  document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(playAd, 3000);
+  });
+
+})();
+</script>
+
+<script type="text/javascript" src="https://cdnwidget.simplejsmenu.com/public/lib.en.min.js"></script>
   </head>
   <body>
     <!-- Loading spinner -->
@@ -470,6 +688,12 @@
             <span class="service-name">Paramount+</span>
           </div>
         </section>
+        
+<ins
+  data-pm-b="728x90"
+  data-partner_id="4844884">
+</ins>
+
 
         <!-- Sección de categorías en círculos -->
         <section
@@ -2838,9 +3062,9 @@
     </div>
     <!-- SortableJS for drag-and-drop -->
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
-    <script type="module" src="https://sfusion.netlify.app/js/config.js" crossorigin="anonymous"></script>
-    <script type="module" src="https://sfusion.netlify.app/js/script.js" crossorigin="anonymous"></script>
-    <script type="module" src="https://sfusion.netlify.app/js/script.block.js" crossorigin="anonymous"></script>
+    <script type="module" src="js/config.js"></script>
+    <script type="module" src="js/script.js"></script>
+    <script type="module" src="js/script.block.js"></script>
 
     <!-- Trailer Modal -->
     <div id="trailer-modal" class="modal-overlay" style="display: none">
