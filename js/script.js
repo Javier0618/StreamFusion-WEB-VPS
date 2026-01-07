@@ -55,6 +55,11 @@ document.addEventListener("DOMContentLoaded", () => {
   if (authLogoImg) {
     authLogoImg.src = "https://raw.githubusercontent.com/Javier0618/Imagenes/main/SFusionLogo.png";
   }
+
+  const textLogoImg = document.querySelector(".text-logo img");
+  if (textLogoImg) {
+    textLogoImg.src = "https://raw.githubusercontent.com/Javier0618/Imagenes/main/SFusion.png";
+  }
 });
 
 const translations = {
