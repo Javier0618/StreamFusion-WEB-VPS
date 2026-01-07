@@ -39,6 +39,24 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const apiCache = new Map();
 
+// Inyectar logos dinámicamente
+document.addEventListener("DOMContentLoaded", () => {
+  const logoContainerImg = document.querySelector(".logo-container img");
+  if (logoContainerImg) {
+    logoContainerImg.src = "https://raw.githubusercontent.com/Javier0618/Imagenes/main/SFusionLogo.png";
+  }
+
+  const logoText = document.querySelector(".logo-text");
+  if (logoText) {
+    logoText.textContent = "StreamFusion";
+  }
+
+  const authLogoImg = document.querySelector(".auth-logo img");
+  if (authLogoImg) {
+    authLogoImg.src = "https://raw.githubusercontent.com/Javier0618/Imagenes/main/SFusionLogo.png";
+  }
+});
+
 const translations = {
   "es-MX": {
     "auth.loginTitle": "Iniciar Sesión",
@@ -1144,16 +1162,16 @@ document.addEventListener("DOMContentLoaded", () => {
 async function loadSplashConfig() {
   const splashScreen = document.getElementById("splash-screen");
   const splashImage = document.getElementById("splash-image");
-  
+
   try {
     const splashDoc = await getDoc(doc(db, "web_config", "splash"));
-    
+
     if (splashDoc.exists()) {
       const config = splashDoc.data();
       if (config.enabled && splashImage) {
         // Set the image
         splashImage.src = config.imageUrl;
-        
+
         // Hide after specified duration (convert to milliseconds)
         const duration = (config.duration || 5) * 1000;
         return duration; // Return the duration so we can wait for it
@@ -1179,7 +1197,7 @@ async function loadSplashConfig() {
 async function initApp() {
   // Start splash config and web loading in PARALLEL
   const splashPromise = loadSplashConfig();
-  
+
   const webLoadingPromise = (async () => {
     try {
       await loadWebSettings();
@@ -1190,18 +1208,18 @@ async function initApp() {
       console.error("Error initializing app:", error);
     }
   })();
-  
+
   // Wait for splash config to complete
   const splashDuration = await splashPromise;
-  
+
   // Show spinner while waiting for splash duration
   showSpinner();
-  
+
   if (splashDuration > 0) {
-    await new Promise(resolve => setTimeout(resolve, splashDuration));
+    await new Promise((resolve) => setTimeout(resolve, splashDuration));
     document.getElementById("splash-screen").style.display = "none";
   }
-  
+
   // Wait for web loading to complete if it's still pending
   await webLoadingPromise;
   hideSpinner();
@@ -1585,27 +1603,27 @@ function initEventListeners() {
     }, 200),
   );
 
-searchBtn.addEventListener("click", toggleSearch);
+  searchBtn.addEventListener("click", toggleSearch);
 
-searchInput.addEventListener("input", function() {
-  // Limpiamos el temporizador cada vez que el usuario escribe
-  clearTimeout(searchTimeout);
-  
-  // Si hay texto, esperamos 500ms antes de buscar para no trabar el cursor
-  searchTimeout = setTimeout(() => {
-    if (searchInput.value.trim().length > 2) {
+  searchInput.addEventListener("input", function () {
+    // Limpiamos el temporizador cada vez que el usuario escribe
+    clearTimeout(searchTimeout);
+
+    // Si hay texto, esperamos 500ms antes de buscar para no trabar el cursor
+    searchTimeout = setTimeout(() => {
+      if (searchInput.value.trim().length > 2) {
+        handleSearch();
+      }
+    }, 500);
+  });
+
+  searchInput.addEventListener("keyup", function (e) {
+    if (e.key === "Enter") {
+      clearTimeout(searchTimeout); // Ejecutar búsqueda inmediata al dar Enter
       handleSearch();
+      searchInput.blur(); // Cerrar teclado
     }
-  }, 500); 
-});
-
-searchInput.addEventListener("keyup", function (e) {
-  if (e.key === "Enter") {
-    clearTimeout(searchTimeout); // Ejecutar búsqueda inmediata al dar Enter
-    handleSearch();
-    searchInput.blur(); // Cerrar teclado
-  }
-});
+  });
   searchInput.addEventListener("input", function () {
     if (document.activeElement === searchInput && searchInput.value.trim()) {
       handleSearch();
@@ -4138,7 +4156,8 @@ async function loadSplashConfigForm() {
     const splashDoc = await getDoc(doc(db, "web_config", "splash"));
     if (splashDoc.exists()) {
       const config = splashDoc.data();
-      document.getElementById("splash-enabled").checked = config.enabled || false;
+      document.getElementById("splash-enabled").checked =
+        config.enabled || false;
       document.getElementById("splash-image-url").value = config.imageUrl || "";
       document.getElementById("splash-duration").value = config.duration || 5;
     }
@@ -4180,14 +4199,14 @@ function initSplashConfig() {
       showMessageModal(
         getText("modal.successTitle"),
         "Configuración de Splash guardada correctamente.",
-        "success"
+        "success",
       );
     } catch (error) {
       console.error("Error saving splash config:", error);
       showMessageModal(
         getText("modal.errorTitle"),
         "Error al guardar la configuración: " + error.message,
-        "error"
+        "error",
       );
     } finally {
       hideSpinner();
@@ -4505,7 +4524,7 @@ window.navigateToView = async function navigateToView(view) {
   } finally {
     isNavigating = false; // Permitir la siguiente navegación
   }
-}
+};
 
 // Function to set up and start pagination for a given content set
 async function setupContentPagination(
@@ -5681,7 +5700,7 @@ let searchTimeout;
 // 2. Función toggleSearch mejorada
 function toggleSearch() {
   const isActive = searchInput.classList.contains("active");
-  
+
   if (!isActive) {
     searchInput.classList.add("active");
     // Forzamos el foco después de un breve delay para que la animación no se rompa
@@ -9230,11 +9249,11 @@ const swipeNavigation = {
     this.updateCurrentSection();
   },
 
-// Busca el objeto swipeNavigation y actualiza estos métodos:
+  // Busca el objeto swipeNavigation y actualiza estos métodos:
 
   handleTouchStart(e) {
     // NUEVA COMPROBACIÓN: Si el modal está abierto, ignorar el gesto por completo
-    if (document.body.classList.contains('modal-open')) {
+    if (document.body.classList.contains("modal-open")) {
       this.isTouchingCategory = true; // Usamos este flag para abortar el gesto
       return;
     }
@@ -9254,9 +9273,13 @@ const swipeNavigation = {
 
     // No activar si el toque comienza en el hero o sliders
     const heroElement = e.target.closest(".hero, .hero-slide, .hero-container");
-    const categoriesSection = e.target.closest(".categories-section, .categories-container");
-    const contentSlider = e.target.closest(".content-slider, .slider-container, .content-row");
-    
+    const categoriesSection = e.target.closest(
+      ".categories-section, .categories-container",
+    );
+    const contentSlider = e.target.closest(
+      ".content-slider, .slider-container, .content-row",
+    );
+
     if (heroElement || categoriesSection || contentSlider) {
       this.isTouchingCategory = true;
       return;
@@ -9271,7 +9294,10 @@ const swipeNavigation = {
     if (e.changedTouches.length !== 1) return;
 
     // Si el modal está abierto o tocamos un elemento excluido, abortar
-    if (this.isTouchingCategory || document.body.classList.contains('modal-open')) {
+    if (
+      this.isTouchingCategory ||
+      document.body.classList.contains("modal-open")
+    ) {
       this.isTouchingCategory = false;
       return;
     }
