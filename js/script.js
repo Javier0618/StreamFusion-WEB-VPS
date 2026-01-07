@@ -60,6 +60,11 @@ document.addEventListener("DOMContentLoaded", () => {
   if (textLogoImg) {
     textLogoImg.src = "https://raw.githubusercontent.com/Javier0618/Imagenes/main/SFusion.png";
   }
+
+    const splashImg = document.querySelector(".splash-content img");
+  if (splashImg) {
+    splashImg.src = "https://raw.githubusercontent.com/Javier0618/Imagenes/main/Splash-SF.jpg";
+  }
 });
 
 const translations = {
