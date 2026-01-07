@@ -43,7 +43,7 @@ const apiCache = new Map();
 document.addEventListener("DOMContentLoaded", () => {
   const logoContainerImg = document.querySelector(".logo-container img");
   if (logoContainerImg) {
-    logoContainerImg.src = "https://raw.githubusercontent.com/Javier0618/Imagenes/main/SFusionLogo.png";
+    logoContainerImg.src = "https://raw.githubusercontent.com/Javier0618/Imagenes/main/SFusion.png";
   }
 
   const logoText = document.querySelector(".logo-text");
@@ -53,7 +53,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const authLogoImg = document.querySelector(".auth-logo img");
   if (authLogoImg) {
-    authLogoImg.src = "https://raw.githubusercontent.com/Javier0618/Imagenes/main/SFusionLogo.png";
+    authLogoImg.src = "https://raw.githubusercontent.com/Javier0618/Imagenes/main/SFusion.png";
   }
 });
 
