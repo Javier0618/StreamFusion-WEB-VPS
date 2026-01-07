@@ -179,11 +179,12 @@ img {
   justify-content: center;
 }
 
-.splash-content img {
+#splash-image {
   width: 100%;
   height: 100%;
   object-fit: cover;
   object-position: center;
+  content: url("https://raw.githubusercontent.com/Javier0618/Imagenes/main/Splash-SF.jpg");
 }
 
 .auth-container {
@@ -237,6 +238,7 @@ img {
 .auth-logo img {
   height: 50px;
   width: auto;
+  content: url("https://raw.githubusercontent.com/Javier0618/Imagenes/main/SFusionLogo.png");
 }
 
 .auth-logo h1 {
@@ -1267,9 +1269,13 @@ header {
   width: auto;
 }
 
- .text-logo {
-    width: 50px;
-  }
+.text-logo {
+  width: 50px;
+}
+
+.text-logo img {
+  content: url("https://raw.githubusercontent.com/Javier0618/Imagenes/main/SFusion.png");
+}
 
 .logo-text {
   font-size: 1.5rem;
@@ -1315,50 +1321,53 @@ header {
 
 /* Mejora del contenedor de búsqueda */
 .search-container {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    min-width: 40px;
-    height: 40px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 40px;
+  height: 40px;
 }
 
 .search-input {
-    background-color: rgba(0, 0, 0, 0.9);
-    border: 1px solid var(--secondary-color);
-    border-radius: 20px;
-    padding: 0.5rem 1rem 0.5rem 2.5rem; /* Ajuste de padding para la lupa */
-    color: var(--text-color);
-    
-    /* CAMBIO CLAVE: No usar width 0 */
-    width: 40px; 
-    opacity: 0;
-    pointer-events: none;
-    transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s;
-    position: absolute;
-    right: 0;
-    z-index: 1000;
+  background-color: rgba(0, 0, 0, 0.9);
+  border: 1px solid var(--secondary-color);
+  border-radius: 20px;
+  padding: 0.5rem 1rem 0.5rem 2.5rem;
+  /* Ajuste de padding para la lupa */
+  color: var(--text-color);
+
+  /* CAMBIO CLAVE: No usar width 0 */
+  width: 40px;
+  opacity: 0;
+  pointer-events: none;
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s;
+  position: absolute;
+  right: 0;
+  z-index: 1000;
 }
 
 .search-input.active {
-    width: 250px; /* Un poco más ancho para móviles */
-    opacity: 1;
-    pointer-events: auto;
+  width: 250px;
+  /* Un poco más ancho para móviles */
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .search-btn {
-    color: var(--text-color);
-    font-size: 1.4rem;
-    position: absolute;
-    right: 0;
-    width: 44px; /* Área de toque más grande según estándares de Google */
-    height: 44px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1001;
-    cursor: pointer;
-    background: transparent;
+  color: var(--text-color);
+  font-size: 1.4rem;
+  position: absolute;
+  right: 0;
+  width: 44px;
+  /* Área de toque más grande según estándares de Google */
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1001;
+  cursor: pointer;
+  background: transparent;
 }
 
 .menu-toggle {
@@ -3944,10 +3953,10 @@ img.lazy.loaded {
 }
 
 @media (max-width: 768px) {
-    
-    footer {
-  display: none;
-        }
+
+  footer {
+    display: none;
+  }
 
   .admin-quick-actions,
   .management-quick-actions {
@@ -4922,12 +4931,13 @@ footer p {
 
 /* Show mobile content on small screens */
 @media (max-width: 768px) {
+
   .mobile-only-content,
   .mobile-seasons-section,
   .mobile-info-header {
     display: block;
   }
-  
+
   .desktop-poster-info-section,
   .desktop-seasons-panel {
     display: none !important;
@@ -4949,11 +4959,11 @@ footer p {
     gap: 1.5rem;
     padding: 1.5rem;
   }
-  
-  .text-logo{
+
+  .text-logo {
     display: none;
   }
-  
+
   .splash-overlay {
     display: none !important;
   }
