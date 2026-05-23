@@ -1397,7 +1397,7 @@ header {
 }
 
 .hero-logo {
-  width: 40%;
+  width: 30%;
   height: auto;
   margin-bottom: 0px;
   filter: drop-shadow(2px 2px 4px rgba(0, 0, 0, 0.5));
@@ -1833,7 +1833,7 @@ header {
   align-items: center;
   gap: 0.5rem;
   transition: transform var(--transition-speed);
-  opacity: 0.7;
+  opacity: 0.45;
   flex: 1;
   /* Hace que cada elemento ocupe una parte igual del espacio disponible */
   min-width: 0;
@@ -1849,8 +1849,7 @@ header {
   /* Limita el tamaño máximo */
   min-width: 30px;
   /* Establece un tamaño mínimo */
-  filter: grayscale(100%);
-  transition: filter var(--transition-speed);
+  transition: filter var(--transition-speed), opacity var(--transition-speed);
 }
 
 .service-name {
@@ -1860,12 +1859,14 @@ header {
   display: none;
 }
 
-.service-item.active .service-logo {
+..service-item.active .service-logo {
   filter: none;
-  /* Elimina el efecto de escala de grises */
   transform: scale(1.1);
-  /* Le da un pequeño efecto de crecimiento */
   transition: filter 0.3s, transform 0.3s;
+}
+
+.service-item.active {
+  opacity: 1;
 }
 
 /* Estilos para el nuevo menú de navegación inferior */
@@ -3997,7 +3998,7 @@ img.lazy.loaded {
   .hero-logo {
     display: block;
     margin: 0 auto 20px;
-    width: 40%;
+    width: 50%;
     height: auto;
     margin-bottom: 20px;
     filter: drop-shadow(2px 2px 4px rgba(0, 0, 0, 0.5));
