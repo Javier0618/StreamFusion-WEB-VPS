@@ -1861,11 +1861,11 @@ header {
 }
 
 .service-item.active .service-logo {
-  filter: none;
+  /*filter: none;
   /* Elimina el efecto de escala de grises */
-  transform: scale(1.1);
+  /*transform: scale(1.1);
   /* Le da un pequeño efecto de crecimiento */
-  transition: filter 0.3s, transform 0.3s;
+  /*transition: filter 0.3s, transform 0.3s;
 }
 
 /* Estilos para el nuevo menú de navegación inferior */
