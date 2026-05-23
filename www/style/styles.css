@@ -5327,19 +5327,11 @@ footer p {
 .backdrop-card-image {
   position: relative;
   width: 100%;
-  padding-bottom: 56.25%; /* 16:9 fallback for older WebViews */
+  padding-bottom: 56.25%; /* 16:9 — padding trick works in ALL WebViews */
   height: 0;
   background-color: #1a1a1a;
   border-radius: var(--border-radius);
   overflow: hidden;
-}
-
-@supports (aspect-ratio: 16/9) {
-  .backdrop-card-image {
-    padding-bottom: 0;
-    height: auto;
-    aspect-ratio: 16 / 9;
-  }
 }
 
 .backdrop-img {
