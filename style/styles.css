@@ -1866,7 +1866,7 @@ header {
 }
 
 .service-item.active {
-  opacity: 1;
+  opacity: 0;
 }
 
 /* Estilos para el nuevo menú de navegación inferior */
