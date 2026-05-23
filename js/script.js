@@ -39,35 +39,6 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const apiCache = new Map();
 
-// Inyectar logos dinámicamente
-document.addEventListener("DOMContentLoaded", () => {
-  const logoContainerImg = document.querySelector(".logo-container img");
-  if (logoContainerImg) {
-    logoContainerImg.src = "https://raw.githubusercontent.com/Javier0618/Imagenes/main/SFusionLogo.png";
-  }
-
-  const logoText = document.querySelector(".logo-text");
-  if (logoText) {
-    logoText.textContent = "StreamFusion";
-  }
-
-  const authLogoImg = document.querySelector(".auth-logo img");
-  if (authLogoImg) {
-    authLogoImg.src = "https://raw.githubusercontent.com/Javier0618/Imagenes/main/SFusionLogo.png";
-  }
-
-  const textLogoImg = document.querySelector(".text-logo img");
-  if (textLogoImg) {
-    textLogoImg.src = "https://raw.githubusercontent.com/Javier0618/Imagenes/main/SFusion.png";
-  }
-
-  // Inyectar imagen de splash dinámicamente (solo el inicial del HTML)
-  const splashImg = document.getElementById("splash-image");
-  if (splashImg) {
-    splashImg.src = "https://raw.githubusercontent.com/Javier0618/Imagenes/main/Splash-SF.jpg";
-  }
-});
-
 const translations = {
   "es-MX": {
     "auth.loginTitle": "Iniciar Sesión",
@@ -156,6 +127,7 @@ const translations = {
     "management.sectionTypeView": "Vista",
     "management.sectionTypeAdScript": "Anuncio (Script)",
     "management.sectionTypeAdVideo": "Anuncio (Video Emergente)",
+    "management.sectionTypeRandom": "Aleatorio",
     "management.noHomeSections": "No se han creado secciones de inicio.",
     "management.loadHomeSectionsError":
       "Error al cargar las secciones de inicio. Asegúrate de que los índices de Firestore están configurados.",
@@ -1173,16 +1145,16 @@ document.addEventListener("DOMContentLoaded", () => {
 async function loadSplashConfig() {
   const splashScreen = document.getElementById("splash-screen");
   const splashImage = document.getElementById("splash-image");
-
+  
   try {
     const splashDoc = await getDoc(doc(db, "web_config", "splash"));
-
+    
     if (splashDoc.exists()) {
       const config = splashDoc.data();
       if (config.enabled && splashImage) {
         // Set the image
         splashImage.src = config.imageUrl;
-
+        
         // Hide after specified duration (convert to milliseconds)
         const duration = (config.duration || 5) * 1000;
         return duration; // Return the duration so we can wait for it
@@ -1208,7 +1180,7 @@ async function loadSplashConfig() {
 async function initApp() {
   // Start splash config and web loading in PARALLEL
   const splashPromise = loadSplashConfig();
-
+  
   const webLoadingPromise = (async () => {
     try {
       await loadWebSettings();
@@ -1219,18 +1191,18 @@ async function initApp() {
       console.error("Error initializing app:", error);
     }
   })();
-
+  
   // Wait for splash config to complete
   const splashDuration = await splashPromise;
-
+  
   // Show spinner while waiting for splash duration
   showSpinner();
-
+  
   if (splashDuration > 0) {
-    await new Promise((resolve) => setTimeout(resolve, splashDuration));
+    await new Promise(resolve => setTimeout(resolve, splashDuration));
     document.getElementById("splash-screen").style.display = "none";
   }
-
+  
   // Wait for web loading to complete if it's still pending
   await webLoadingPromise;
   hideSpinner();
@@ -1614,25 +1586,11 @@ function initEventListeners() {
     }, 200),
   );
 
+  // Search functionality
   searchBtn.addEventListener("click", toggleSearch);
-
-  searchInput.addEventListener("input", function () {
-    // Limpiamos el temporizador cada vez que el usuario escribe
-    clearTimeout(searchTimeout);
-
-    // Si hay texto, esperamos 500ms antes de buscar para no trabar el cursor
-    searchTimeout = setTimeout(() => {
-      if (searchInput.value.trim().length > 2) {
-        handleSearch();
-      }
-    }, 500);
-  });
-
   searchInput.addEventListener("keyup", function (e) {
     if (e.key === "Enter") {
-      clearTimeout(searchTimeout); // Ejecutar búsqueda inmediata al dar Enter
       handleSearch();
-      searchInput.blur(); // Cerrar teclado
     }
   });
   searchInput.addEventListener("input", function () {
@@ -4167,8 +4125,7 @@ async function loadSplashConfigForm() {
     const splashDoc = await getDoc(doc(db, "web_config", "splash"));
     if (splashDoc.exists()) {
       const config = splashDoc.data();
-      document.getElementById("splash-enabled").checked =
-        config.enabled || false;
+      document.getElementById("splash-enabled").checked = config.enabled || false;
       document.getElementById("splash-image-url").value = config.imageUrl || "";
       document.getElementById("splash-duration").value = config.duration || 5;
     }
@@ -4210,14 +4167,14 @@ function initSplashConfig() {
       showMessageModal(
         getText("modal.successTitle"),
         "Configuración de Splash guardada correctamente.",
-        "success",
+        "success"
       );
     } catch (error) {
       console.error("Error saving splash config:", error);
       showMessageModal(
         getText("modal.errorTitle"),
         "Error al guardar la configuración: " + error.message,
-        "error",
+        "error"
       );
     } finally {
       hideSpinner();
@@ -4535,7 +4492,7 @@ window.navigateToView = async function navigateToView(view) {
   } finally {
     isNavigating = false; // Permitir la siguiente navegación
   }
-};
+}
 
 // Function to set up and start pagination for a given content set
 async function setupContentPagination(
@@ -5036,6 +4993,33 @@ async function renderDynamicSections() {
             shuffleArray(viewContent).slice(0, 20),
           );
           break;
+        case "random":
+          sectionEl.innerHTML = `
+            <div class="row-header">
+              <h2 class="section-title">${section.title}</h2>
+            </div>
+            <div class="content-slider backdrop-slider">
+              <div class="slider-container" id="slider-${section.id}"></div>
+              <div class="slider-controls">
+                <button class="slider-arrow slider-prev" aria-label="Anterior"><i class="fas fa-chevron-left"></i></button>
+                <button class="slider-arrow slider-next" aria-label="Siguiente"><i class="fas fa-chevron-right"></i></button>
+              </div>
+            </div>`;
+          container.appendChild(sectionEl);
+          const count = section.options?.count || 10;
+          const pinnedIds = section.options?.pinnedIds || [];
+          const pinned = pinnedIds
+            .map((id) => allContent.find((c) => c.id === id || c.id === Number(id)))
+            .filter(Boolean);
+          const rest = shuffleArray(
+            allContent.filter((c) => !pinnedIds.some((pid) => pid === c.id || pid === Number(pid)))
+          );
+          const randomFinal = [...pinned, ...rest].slice(0, count);
+          await renderBackdropSlider(
+            document.getElementById(`slider-${section.id}`),
+            randomFinal,
+          );
+          break;
         case "ad_script":
           const adScriptContainer = document.createElement("div");
           adScriptContainer.className = "ad-script-section";
@@ -5234,6 +5218,57 @@ async function renderContentSlider(sliderElement, content) {
 
   translatedContent.forEach((item) => {
     const card = createContentCard(item, "slider", sliderElement.id);
+    sliderElement.appendChild(card);
+  });
+}
+
+async function renderBackdropSlider(sliderElement, content) {
+  sliderElement.innerHTML = "";
+
+  const translatedContent = await translateContentToDisplayLanguage(content);
+
+  if (translatedContent.length === 0) {
+    const emptyState = document.createElement("div");
+    emptyState.className = "empty-state";
+    emptyState.innerHTML = `
+      <i class="fas fa-film empty-icon"></i>
+      <h3 class="empty-title">${getText("content.emptyState.title")}</h3>
+      <p class="empty-text">${getText("content.emptyState.text")}</p>`;
+    sliderElement.appendChild(emptyState);
+    return;
+  }
+
+  translatedContent.forEach((item) => {
+    const card = document.createElement("div");
+    card.className = "backdrop-card";
+    card.dataset.id = item.id;
+    card.dataset.type = item.media_type;
+
+    const backdropUrl = item.backdrop_path
+      ? `${IMG_BASE_URL}/w780${item.backdrop_path}`
+      : null;
+
+    const title = item.title || item.name || getText("content.noTitle");
+    const rating = item.vote_average ? item.vote_average.toFixed(1) : "N/A";
+    const type = item.media_type === "movie"
+      ? getText("content.type.movie")
+      : getText("content.type.series");
+
+    card.innerHTML = `
+      <div class="backdrop-card-image">
+        ${backdropUrl
+          ? `<img src="${backdropUrl}" alt="${title}" class="backdrop-img">`
+          : `<div class="backdrop-placeholder"><i class="fas fa-star"></i></div>`}
+        <div class="backdrop-card-badge">${type}</div>
+        <div class="backdrop-card-rating"><i class="fas fa-star" style="color:#f5c518;font-size:0.7rem;"></i> ${rating}</div>
+        <div class="backdrop-card-gradient"></div>
+      </div>
+      <div class="backdrop-card-title"><h3>${title}</h3></div>`;
+
+    card.addEventListener("click", () => {
+      showMovieDetailsModal(item.id, item.media_type);
+    });
+
     sliderElement.appendChild(card);
   });
 }
@@ -5706,24 +5741,10 @@ function addHeroSwipeSupport(heroElement) {
   }
 }
 
-let searchTimeout;
-
-// 2. Función toggleSearch mejorada
 function toggleSearch() {
-  const isActive = searchInput.classList.contains("active");
-
-  if (!isActive) {
-    searchInput.classList.add("active");
-    // Forzamos el foco después de un breve delay para que la animación no se rompa
-    setTimeout(() => {
-      searchInput.focus();
-    }, 300);
-  } else {
-    if (searchInput.value.trim() !== "") {
-      handleSearch();
-    } else {
-      searchInput.classList.remove("active");
-    }
+  searchInput.classList.toggle("active");
+  if (searchInput.classList.contains("active")) {
+    setTimeout(() => searchInput.focus(), 300);
   }
 }
 
@@ -8918,6 +8939,7 @@ function openSectionModal(section = null, collectionName) {
       <option value="view" data-translate="management.sectionTypeView">Vista</option>
       <option value="ad_script" data-translate="management.sectionTypeAdScript">Anuncio (Script)</option>
       <option value="ad_video" data-translate="management.sectionTypeAdVideo">Anuncio (Video Emergente)</option>
+      <option value="random" data-translate="management.sectionTypeRandom">Aleatorio</option>
     `;
   }
 
@@ -9035,6 +9057,87 @@ function renderSectionOptions(type, options = {}) {
         document.getElementById("section-view").value = options.view;
       }
       break;
+    case "random": {
+      const existingPinnedIds = options.pinnedIds || [];
+      container.innerHTML = `
+        <div class="form-group">
+          <label style="color:var(--text-secondary);font-size:0.9rem;">Cantidad de posters a mostrar</label>
+          <input type="number" id="random-count" class="form-input" min="4" max="40" value="${options.count || 10}" style="width:90px;margin-top:6px;">
+        </div>
+        <div class="form-group" style="margin-top:14px;">
+          <label style="color:var(--text-secondary);font-size:0.9rem;">Fijar títulos específicos <span style="color:#666;">(siempre aparecerán)</span></label>
+          <input type="text" id="random-pin-search" class="form-input" placeholder="Buscar película o serie..." style="margin-top:6px;">
+          <div id="random-pin-results" style="max-height:180px;overflow-y:auto;background:#141414;border-radius:6px;margin-top:4px;display:none;border:1px solid #2d2d2d;"></div>
+          <div id="random-pinned-list" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;"></div>
+        </div>`;
+
+      let currentPinnedIds = [...existingPinnedIds];
+
+      const renderPinnedList = (ids) => {
+        const listEl = document.getElementById("random-pinned-list");
+        if (!listEl) return;
+        listEl.innerHTML = "";
+        ids.forEach((id) => {
+          const item = allContent.find((c) => c.id === id || c.id === Number(id));
+          if (!item) return;
+          const chip = document.createElement("div");
+          chip.className = "pinned-chip";
+          chip.innerHTML = `
+            ${item.poster_path ? `<img src="${IMG_BASE_URL}/w92${item.poster_path}" style="width:24px;height:36px;object-fit:cover;border-radius:3px;">` : ""}
+            <span>${item.title || item.name}</span>
+            <button type="button" data-id="${id}" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:1rem;line-height:1;padding:0 2px;">×</button>`;
+          chip.querySelector("button").addEventListener("click", () => {
+            currentPinnedIds = currentPinnedIds.filter((pid) => pid !== id && pid !== Number(id));
+            renderPinnedList(currentPinnedIds);
+          });
+          listEl.appendChild(chip);
+        });
+      };
+
+      renderPinnedList(currentPinnedIds);
+
+      const searchInput = document.getElementById("random-pin-search");
+      const resultsEl = document.getElementById("random-pin-results");
+
+      searchInput.addEventListener("input", () => {
+        const q = searchInput.value.trim().toLowerCase();
+        if (!q) { resultsEl.style.display = "none"; return; }
+        const matches = allContent.filter((item) => {
+          const t = (item.title || item.name || "").toLowerCase();
+          return t.includes(q);
+        }).slice(0, 8);
+        resultsEl.innerHTML = "";
+        if (matches.length === 0) {
+          resultsEl.innerHTML = `<p style="padding:10px;color:#666;font-size:0.85rem;">Sin resultados</p>`;
+        } else {
+          matches.forEach((item) => {
+            const alreadyPinned = currentPinnedIds.some((pid) => pid === item.id || pid === Number(item.id));
+            const row = document.createElement("div");
+            row.style.cssText = "display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;border-bottom:1px solid #222;";
+            row.innerHTML = `
+              ${item.poster_path ? `<img src="${IMG_BASE_URL}/w92${item.poster_path}" style="width:28px;height:42px;object-fit:cover;border-radius:3px;flex-shrink:0;">` : `<div style="width:28px;height:42px;background:#2a2a2a;border-radius:3px;flex-shrink:0;"></div>`}
+              <span style="flex:1;font-size:0.85rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${item.title || item.name}</span>
+              <span style="font-size:0.72rem;color:#888;flex-shrink:0;">${item.media_type === "movie" ? "Película" : "Serie"}</span>
+              ${alreadyPinned ? `<i class="fas fa-check" style="color:var(--secondary-color);flex-shrink:0;"></i>` : ""}`;
+            if (!alreadyPinned) {
+              row.addEventListener("click", () => {
+                currentPinnedIds.push(item.id);
+                renderPinnedList(currentPinnedIds);
+                searchInput.value = "";
+                resultsEl.style.display = "none";
+              });
+              row.addEventListener("mouseenter", () => { row.style.background = "#1f1f1f"; });
+              row.addEventListener("mouseleave", () => { row.style.background = ""; });
+            }
+            resultsEl.appendChild(row);
+          });
+        }
+        resultsEl.style.display = "block";
+      });
+
+      container._getPinnedIds = () => currentPinnedIds;
+      break;
+    }
     case "ad_script":
       container.innerHTML = `
         <div class="form-group">
@@ -9193,6 +9296,12 @@ async function saveSection() {
     case "ad_video":
       options.videoUrl = document.getElementById("section-ad-video-url").value;
       break;
+    case "random": {
+      options.count = parseInt(document.getElementById("random-count")?.value) || 10;
+      const sectionOptsEl = document.getElementById("section-options");
+      options.pinnedIds = sectionOptsEl._getPinnedIds ? sectionOptsEl._getPinnedIds() : [];
+      break;
+    }
     case "ad_script_modal":
       options.script = document.getElementById("section-ad-script").value;
       options.position = document.getElementById("section-position").value;
@@ -9260,15 +9369,7 @@ const swipeNavigation = {
     this.updateCurrentSection();
   },
 
-  // Busca el objeto swipeNavigation y actualiza estos métodos:
-
   handleTouchStart(e) {
-    // NUEVA COMPROBACIÓN: Si el modal está abierto, ignorar el gesto por completo
-    if (document.body.classList.contains("modal-open")) {
-      this.isTouchingCategory = true; // Usamos este flag para abortar el gesto
-      return;
-    }
-
     // Solo registrar si el usuario toca con un dedo
     if (e.touches.length !== 1) return;
 
@@ -9278,20 +9379,38 @@ const swipeNavigation = {
     // No activar si el toque comienza en el menú inferior (bottom-nav)
     const bottomNav = document.querySelector(".bottom-nav");
     if (bottomNav && bottomNav.contains(e.target)) {
-      this.isTouchingCategory = true; // Bloquear
+      this.isTouchingCategory = false;
       return;
     }
 
-    // No activar si el toque comienza en el hero o sliders
+    // No activar si el toque comienza en el hero
     const heroElement = e.target.closest(".hero, .hero-slide, .hero-container");
-    const categoriesSection = e.target.closest(
-      ".categories-section, .categories-container",
-    );
+    if (heroElement) {
+      this.isTouchingCategory = true;
+      return;
+    }
+
+    // EXCLUIR LA SECCIÓN DE CATEGORÍAS COMPLETAMENTE
+    // Verificar tanto la sección como el contenedor
+    const categoriesSection = e.target.closest(".categories-section");
+    const categoriesContainer = e.target.closest(".categories-container");
+    if (categoriesSection || categoriesContainer) {
+      this.isTouchingCategory = true;
+      return;
+    }
+
+    // No activar si el toque comienza en un slider de contenido
     const contentSlider = e.target.closest(
       ".content-slider, .slider-container, .content-row",
     );
+    if (contentSlider) {
+      this.isTouchingCategory = true;
+      return;
+    }
 
-    if (heroElement || categoriesSection || contentSlider) {
+    // No activar si tocamos una categoría individual (elemento con clase category-item)
+    const categoryItem = e.target.closest(".category-item");
+    if (categoryItem) {
       this.isTouchingCategory = true;
       return;
     }
@@ -9304,12 +9423,22 @@ const swipeNavigation = {
   handleTouchEnd(e) {
     if (e.changedTouches.length !== 1) return;
 
-    // Si el modal está abierto o tocamos un elemento excluido, abortar
-    if (
-      this.isTouchingCategory ||
-      document.body.classList.contains("modal-open")
-    ) {
+    // Si estábamos tocando una categoría o hero, no hacer swipe
+    if (this.isTouchingCategory) {
       this.isTouchingCategory = false;
+      return;
+    }
+
+    // También verificar si el toque termina dentro del hero
+    const heroElement = e.target.closest(".hero, .hero-slide, .hero-container");
+    if (heroElement) {
+      return;
+    }
+
+    // EXCLUIR SI EL TOQUE TERMINA EN LA SECCIÓN DE CATEGORÍAS
+    const categoriesSection = e.target.closest(".categories-section");
+    const categoriesContainer = e.target.closest(".categories-container");
+    if (categoriesSection || categoriesContainer) {
       return;
     }
 
