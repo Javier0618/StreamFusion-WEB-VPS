@@ -156,6 +156,7 @@ const translations = {
     "management.sectionTypeView": "Vista",
     "management.sectionTypeAdScript": "Anuncio (Script)",
     "management.sectionTypeAdVideo": "Anuncio (Video Emergente)",
+    "management.sectionTypeRandom": "Aleatorio",
     "management.noHomeSections": "No se han creado secciones de inicio.",
     "management.loadHomeSectionsError":
       "Error al cargar las secciones de inicio. Asegúrate de que los índices de Firestore están configurados.",
@@ -5036,6 +5037,24 @@ async function renderDynamicSections() {
             shuffleArray(viewContent).slice(0, 20),
           );
           break;
+          case "random":
+          sectionEl.innerHTML = `
+            <div class="row-header">
+              <h2 class="section-title">${section.title}</h2>
+            </div>
+            <div class="content-slider backdrop-slider">
+              <div class="slider-container" id="slider-${section.id}"></div>
+              <div class="slider-controls">
+                <button class="slider-arrow slider-prev" aria-label="Anterior"><i class="fas fa-chevron-left"></i></button>
+                <button class="slider-arrow slider-next" aria-label="Siguiente"><i class="fas fa-chevron-right"></i></button>
+              </div>
+            </div>`;
+          container.appendChild(sectionEl);
+          await renderBackdropSlider(
+            document.getElementById(`slider-${section.id}`),
+            shuffleArray([...allContent]).slice(0, 20),
+          );
+          break;
         case "ad_script":
           const adScriptContainer = document.createElement("div");
           adScriptContainer.className = "ad-script-section";
@@ -5234,6 +5253,49 @@ async function renderContentSlider(sliderElement, content) {
 
   translatedContent.forEach((item) => {
     const card = createContentCard(item, "slider", sliderElement.id);
+    sliderElement.appendChild(card);
+  });
+}
+
+async function renderBackdropSlider(sliderElement, content) {
+  sliderElement.innerHTML = "";
+  const translatedContent = await translateContentToDisplayLanguage(content);
+  if (translatedContent.length === 0) {
+    const emptyState = document.createElement("div");
+    emptyState.className = "empty-state";
+    emptyState.innerHTML = `
+      <i class="fas fa-film empty-icon"></i>
+      <h3 class="empty-title">${getText("content.emptyState.title")}</h3>
+      <p class="empty-text">${getText("content.emptyState.text")}</p>`;
+    sliderElement.appendChild(emptyState);
+    return;
+  }
+  translatedContent.forEach((item) => {
+    const card = document.createElement("div");
+    card.className = "backdrop-card";
+    card.dataset.id = item.id;
+    card.dataset.type = item.media_type;
+    const backdropUrl = item.backdrop_path
+      ? `${IMG_BASE_URL}/w780${item.backdrop_path}`
+      : null;
+    const title = item.title || item.name || getText("content.noTitle");
+    const rating = item.vote_average ? item.vote_average.toFixed(1) : "N/A";
+    const type = item.media_type === "movie"
+      ? getText("content.type.movie")
+      : getText("content.type.series");
+    card.innerHTML = `
+      <div class="backdrop-card-image">
+        ${backdropUrl
+          ? `<img src="${backdropUrl}" alt="${title}" class="backdrop-img">`
+          : `<div class="backdrop-placeholder"><i class="fas fa-star"></i></div>`}
+        <div class="backdrop-card-badge">${type}</div>
+        <div class="backdrop-card-rating"><i class="fas fa-star" style="color:#f5c518;font-size:0.7rem;"></i> ${rating}</div>
+        <div class="backdrop-card-gradient"></div>
+      </div>
+      <div class="backdrop-card-title"><h3>${title}</h3></div>`;
+    card.addEventListener("click", () => {
+      showMovieDetailsModal(item.id, item.media_type);
+    });
     sliderElement.appendChild(card);
   });
 }
@@ -8918,6 +8980,7 @@ function openSectionModal(section = null, collectionName) {
       <option value="view" data-translate="management.sectionTypeView">Vista</option>
       <option value="ad_script" data-translate="management.sectionTypeAdScript">Anuncio (Script)</option>
       <option value="ad_video" data-translate="management.sectionTypeAdVideo">Anuncio (Video Emergente)</option>
+      <option value="random" data-translate="management.sectionTypeRandom">Aleatorio</option>
     `;
   }
 
@@ -9034,6 +9097,9 @@ function renderSectionOptions(type, options = {}) {
       if (options.view) {
         document.getElementById("section-view").value = options.view;
       }
+      break;
+      case "random":
+      container.innerHTML = `<p style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 8px;">Se mostrarán hasta 20 títulos aleatorios de toda la biblioteca.</p>`;
       break;
     case "ad_script":
       container.innerHTML = `
@@ -9192,6 +9258,8 @@ async function saveSection() {
       break;
     case "ad_video":
       options.videoUrl = document.getElementById("section-ad-video-url").value;
+      break;
+      case "random":
       break;
     case "ad_script_modal":
       options.script = document.getElementById("section-ad-script").value;
