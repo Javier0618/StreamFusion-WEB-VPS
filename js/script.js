@@ -3272,8 +3272,8 @@ function createContentCard(
                 ${sliderId === "en-estreno-slider" ? '<div class="card-estreno-diagonal"></div>' : ""}
                 ${sliderId === "recently-added-slider" ? `<div class="card-nuevo-pegatina">${getText("content.newSticker")}</div>` : ""}
             </div>
-            <div class="card-title-bottom">
-                <h3>${title}</h3>
+            <div class="card-title-bottom" style="padding:0.4rem 0 0;height:1.4rem;overflow:hidden;width:100%;display:block;">
+                <h3 style="font-size:0.8rem;font-weight:500;color:var(--text-color);margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;display:block;line-height:1.2;">${title}</h3>
             </div>
             <div class="card-overlay" style="display: none;">
                 <div class="card-actions">
@@ -5338,8 +5338,8 @@ async function renderBackdropSlider(sliderElement, content) {
     const badgeS = "position:absolute;top:6px;left:6px;background:#e87722;color:#fff;font-size:11px;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase;z-index:3;line-height:1.4;";
     const rateS  = "position:absolute;bottom:6px;right:6px;background:rgba(0,0,0,0.75);color:#fff;font-size:11px;font-weight:600;padding:2px 6px;border-radius:4px;z-index:3;line-height:1.4;";
     const gradS  = "position:absolute;top:0;left:0;width:100%;height:100%;background:linear-gradient(to top,rgba(0,0,0,0.6) 0%,transparent 55%);pointer-events:none;z-index:2;";
-    const titlS  = "padding:5px 2px 0;overflow:hidden;";
-    const h3S    = "font-size:12px;font-weight:500;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff;";
+    const titlS  = "padding:5px 2px 0;overflow:hidden;width:100%;display:block;";
+    const h3S    = "font-size:12px;font-weight:500;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff;width:100%;display:block;";
 
     card.innerHTML = `
       <div class="backdrop-card-image" style="${wrapS}">
