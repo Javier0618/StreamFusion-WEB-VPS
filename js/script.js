@@ -5050,9 +5050,18 @@ async function renderDynamicSections() {
               </div>
             </div>`;
           container.appendChild(sectionEl);
+          const count = section.options?.count || 10;
+          const pinnedIds = section.options?.pinnedIds || [];
+          const pinned = pinnedIds
+            .map((id) => allContent.find((c) => c.id === id || c.id === Number(id)))
+            .filter(Boolean);
+          const rest = shuffleArray(
+            allContent.filter((c) => !pinnedIds.some((pid) => pid === c.id || pid === Number(pid)))
+          );
+          const randomFinal = [...pinned, ...rest].slice(0, count);
           await renderBackdropSlider(
             document.getElementById(`slider-${section.id}`),
-            shuffleArray([...allContent]).slice(0, 20),
+            randomFinal,
           );
           break;
         case "ad_script":
@@ -9098,9 +9107,81 @@ function renderSectionOptions(type, options = {}) {
         document.getElementById("section-view").value = options.view;
       }
       break;
-      case "random":
-      container.innerHTML = `<p style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 8px;">Se mostrarán hasta 20 títulos aleatorios de toda la biblioteca.</p>`;
+      case "random": {
+      const existingPinnedIds = options.pinnedIds || [];
+      container.innerHTML = `
+        <div class="form-group">
+          <label style="color:var(--text-secondary);font-size:0.9rem;">Cantidad de posters a mostrar</label>
+          <input type="number" id="random-count" class="form-input" min="4" max="40" value="${options.count || 10}" style="width:90px;margin-top:6px;">
+        </div>
+        <div class="form-group" style="margin-top:14px;">
+          <label style="color:var(--text-secondary);font-size:0.9rem;">Fijar títulos específicos <span style="color:#666;">(siempre aparecerán)</span></label>
+          <input type="text" id="random-pin-search" class="form-input" placeholder="Buscar película o serie..." style="margin-top:6px;">
+          <div id="random-pin-results" style="max-height:180px;overflow-y:auto;background:#141414;border-radius:6px;margin-top:4px;display:none;border:1px solid #2d2d2d;"></div>
+          <div id="random-pinned-list" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;"></div>
+        </div>`;
+      let currentPinnedIds = [...existingPinnedIds];
+      const renderPinnedList = (ids) => {
+        const listEl = document.getElementById("random-pinned-list");
+        if (!listEl) return;
+        listEl.innerHTML = "";
+        ids.forEach((id) => {
+          const item = allContent.find((c) => c.id === id || c.id === Number(id));
+          if (!item) return;
+          const chip = document.createElement("div");
+          chip.className = "pinned-chip";
+          chip.innerHTML = `
+            ${item.poster_path ? `<img src="${IMG_BASE_URL}/w92${item.poster_path}" style="width:24px;height:36px;object-fit:cover;border-radius:3px;">` : ""}
+            <span>${item.title || item.name}</span>
+            <button type="button" data-id="${id}" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:1rem;line-height:1;padding:0 2px;">×</button>`;
+          chip.querySelector("button").addEventListener("click", () => {
+            currentPinnedIds = currentPinnedIds.filter((pid) => pid !== id && pid !== Number(id));
+            renderPinnedList(currentPinnedIds);
+          });
+          listEl.appendChild(chip);
+        });
+      };
+      renderPinnedList(currentPinnedIds);
+      const searchInput = document.getElementById("random-pin-search");
+      const resultsEl = document.getElementById("random-pin-results");
+      searchInput.addEventListener("input", () => {
+        const q = searchInput.value.trim().toLowerCase();
+        if (!q) { resultsEl.style.display = "none"; return; }
+        const matches = allContent.filter((item) => {
+          const t = (item.title || item.name || "").toLowerCase();
+          return t.includes(q);
+        }).slice(0, 8);
+        resultsEl.innerHTML = "";
+        if (matches.length === 0) {
+          resultsEl.innerHTML = `<p style="padding:10px;color:#666;font-size:0.85rem;">Sin resultados</p>`;
+        } else {
+          matches.forEach((item) => {
+            const alreadyPinned = currentPinnedIds.some((pid) => pid === item.id || pid === Number(item.id));
+            const row = document.createElement("div");
+            row.style.cssText = "display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;border-bottom:1px solid #222;";
+            row.innerHTML = `
+              ${item.poster_path ? `<img src="${IMG_BASE_URL}/w92${item.poster_path}" style="width:28px;height:42px;object-fit:cover;border-radius:3px;flex-shrink:0;">` : `<div style="width:28px;height:42px;background:#2a2a2a;border-radius:3px;flex-shrink:0;"></div>`}
+              <span style="flex:1;font-size:0.85rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${item.title || item.name}</span>
+              <span style="font-size:0.72rem;color:#888;flex-shrink:0;">${item.media_type === "movie" ? "Película" : "Serie"}</span>
+              ${alreadyPinned ? `<i class="fas fa-check" style="color:var(--secondary-color);flex-shrink:0;"></i>` : ""}`;
+            if (!alreadyPinned) {
+              row.addEventListener("click", () => {
+                currentPinnedIds.push(item.id);
+                renderPinnedList(currentPinnedIds);
+                searchInput.value = "";
+                resultsEl.style.display = "none";
+              });
+              row.addEventListener("mouseenter", () => { row.style.background = "#1f1f1f"; });
+              row.addEventListener("mouseleave", () => { row.style.background = ""; });
+            }
+            resultsEl.appendChild(row);
+          });
+        }
+        resultsEl.style.display = "block";
+      });
+      container._getPinnedIds = () => currentPinnedIds;
       break;
+      }
     case "ad_script":
       container.innerHTML = `
         <div class="form-group">
@@ -9259,8 +9340,12 @@ async function saveSection() {
     case "ad_video":
       options.videoUrl = document.getElementById("section-ad-video-url").value;
       break;
-      case "random":
+      case "random": {
+      options.count = parseInt(document.getElementById("random-count")?.value) || 10;
+      const sectionOptsEl = document.getElementById("section-options");
+      options.pinnedIds = sectionOptsEl._getPinnedIds ? sectionOptsEl._getPinnedIds() : [];
       break;
+      }
     case "ad_script_modal":
       options.script = document.getElementById("section-ad-script").value;
       options.position = document.getElementById("section-position").value;
