@@ -1623,7 +1623,7 @@ header {
   padding: 0.4rem 0 0;
   text-align: left;
   background: transparent;
-  height: 2.4rem;
+  height: 1.4rem;
   overflow: hidden;
 }
 
@@ -1632,12 +1632,12 @@ header {
   font-weight: 500;
   color: var(--text-color);
   margin: 0;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.2;
+  width: 100%;
+  display: block;
 }
 
 .card-overlay {
