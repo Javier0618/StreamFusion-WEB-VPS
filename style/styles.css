@@ -1397,7 +1397,7 @@ header {
 }
 
 .hero-logo {
-  width: 50%;
+  width: 40%;
   height: auto;
   margin-bottom: 0px;
   filter: drop-shadow(2px 2px 4px rgba(0, 0, 0, 0.5));
@@ -3997,7 +3997,7 @@ img.lazy.loaded {
   .hero-logo {
     display: block;
     margin: 0 auto 20px;
-    width: 50%;
+    width: 40%;
     height: auto;
     margin-bottom: 20px;
     filter: drop-shadow(2px 2px 4px rgba(0, 0, 0, 0.5));
