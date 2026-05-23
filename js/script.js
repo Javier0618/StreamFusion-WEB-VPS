@@ -5288,9 +5288,26 @@ async function renderBackdropSlider(sliderElement, content) {
     sliderElement.appendChild(emptyState);
     return;
   }
+  // Ancho estándar calculado una sola vez para todos los cards del slider
+  const screenW = window.innerWidth;
+  const cardW = screenW <= 480 ? Math.round(screenW * 0.66) : 280;
+  const cardStyle = [
+    `flex:0 0 ${cardW}px`,
+    `width:${cardW}px`,
+    `min-width:${cardW}px`,
+    `max-width:${cardW}px`,
+    "margin:0 4px",
+    "border-radius:8px",
+    "overflow:hidden",
+    "cursor:pointer",
+    "display:inline-block",
+    "vertical-align:top",
+  ].join(";");
+
   translatedContent.forEach((item) => {
     const card = document.createElement("div");
     card.className = "backdrop-card";
+    card.style.cssText = cardStyle;
     card.dataset.id = item.id;
     card.dataset.type = item.media_type;
 
