@@ -1833,7 +1833,6 @@ header {
   align-items: center;
   gap: 0.5rem;
   transition: transform var(--transition-speed);
-  opacity: 0.45;
   flex: 1;
   /* Hace que cada elemento ocupe una parte igual del espacio disponible */
   min-width: 0;
