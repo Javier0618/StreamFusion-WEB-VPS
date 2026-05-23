@@ -3229,10 +3229,6 @@ function createContentCard(
     cardHTML = `
             <div class="grid-poster-wrapper">
                 <img src="${posterPath}" alt="${title}" class="grid-poster">
-                <div class="grid-rating">${rating}</div>
-                ${qualityBadge}
-                ${languageBadge}
-                <div class="grid-badge">${type}</div>
                 <div class="my-list-overlay">
                     <button class="my-list-remove-btn" title="${getText("actions.removeFromList")}">
                         <i class="fas fa-trash-alt"></i>
@@ -3248,10 +3244,6 @@ function createContentCard(
     cardHTML = `
             <div class="grid-poster-wrapper">
                 <img src="${posterPath}" alt="${title}" class="grid-poster">
-                <div class="grid-rating">${rating}</div>
-                ${qualityBadge}
-                ${languageBadge}
-                <div class="grid-badge">${type}</div>
                 <div class="grid-actions">
                     <button class="grid-btn play-btn" title="${getText("actions.watchNow")}"><i class="fas fa-play"></i></button>
                     <button class="grid-btn info-btn" title="${getText("actions.info")}"><i class="fas fa-info"></i></button>
@@ -3265,12 +3257,6 @@ function createContentCard(
     cardHTML = `
             <div class="card-poster-wrapper">
                 <img src="${posterPath}" alt="${title}" class="card-poster">
-                <div class="card-rating">${rating}</div>
-                ${qualityBadge}
-                ${languageBadge}
-                <div class="card-badge">${type}</div>
-                ${sliderId === "en-estreno-slider" ? '<div class="card-estreno-diagonal"></div>' : ""}
-                ${sliderId === "recently-added-slider" ? `<div class="card-nuevo-pegatina">${getText("content.newSticker")}</div>` : ""}
             </div>
             <div class="card-title-bottom" style="padding:0.4rem 0 0;height:1.4rem;overflow:hidden;width:100%;display:block;">
                 <h3 style="font-size:0.8rem;font-weight:500;color:var(--text-color);margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;display:block;line-height:1.2;">${title}</h3>
@@ -5351,8 +5337,6 @@ async function renderBackdropSlider(sliderElement, content) {
              <img src="${spacerSvg}" alt="" aria-hidden="true" style="${imgS}">
              <div style="${holdS}"><i class="fas fa-film"></i></div>`
         }
-        <div class="backdrop-card-badge" style="${badgeS}">${type}</div>
-        <div class="backdrop-card-rating" style="${rateS}">&#9733; ${rating}</div>
         <div style="${gradS}"></div>
       </div>
       <div class="backdrop-card-title" style="${titlS}"><h3 style="${h3S}">${title}</h3></div>`;
@@ -5413,8 +5397,6 @@ async function renderTrendingSlider(sliderElement, content) {
 
     card.innerHTML = `
             <img src="${posterPath}" alt="${title}" class="card-poster">
-            <div class="card-rating">${rating}</div>
-            <div class="card-badge">${type}</div>
             <div class="card-overlay">
                 <h3 class="card-title">${title}</h3>
                 <div class="card-info">
