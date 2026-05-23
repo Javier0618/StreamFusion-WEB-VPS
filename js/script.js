@@ -5293,6 +5293,7 @@ async function renderBackdropSlider(sliderElement, content) {
     card.className = "backdrop-card";
     card.dataset.id = item.id;
     card.dataset.type = item.media_type;
+
     const backdropUrl = item.backdrop_path
       ? `${IMG_BASE_URL}/w780${item.backdrop_path}`
       : null;
@@ -5302,18 +5303,43 @@ async function renderBackdropSlider(sliderElement, content) {
       item.media_type === "movie"
         ? getText("content.type.movie")
         : getText("content.type.series");
+
+    // ── Técnica "imagen natural" ──────────────────────────────────────────────
+    // La imagen backdrop de TMDB es 16:9. Al mostrarla con width:100%;height:auto
+    // la propia imagen define la altura del contenedor — sin trucos de CSS que
+    // fallen en Capacitor/Android. Los overlays (badge, rating, gradiente) se
+    // posicionan absolutamente sobre esa caja ya dimensionada.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // SVG 16:9 transparente (inline, sin petición de red) para cuando no hay backdrop
+    const spacerSvg = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 9'%3E%3C/svg%3E`;
+
+    const wrapS  = "position:relative;width:100%;overflow:hidden;background:#1a1a1a;border-radius:8px;display:block;";
+    const imgS   = "width:100%;height:auto;display:block;";
+    const realS  = "position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:block;";
+    const holdS  = "position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#1f1f1f;color:#555;font-size:2rem;";
+    const badgeS = "position:absolute;top:6px;left:6px;background:#e87722;color:#fff;font-size:11px;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase;z-index:3;line-height:1.4;";
+    const rateS  = "position:absolute;bottom:6px;right:6px;background:rgba(0,0,0,0.75);color:#fff;font-size:11px;font-weight:600;padding:2px 6px;border-radius:4px;z-index:3;line-height:1.4;";
+    const gradS  = "position:absolute;top:0;left:0;width:100%;height:100%;background:linear-gradient(to top,rgba(0,0,0,0.6) 0%,transparent 55%);pointer-events:none;z-index:2;";
+    const titlS  = "padding:5px 2px 0;overflow:hidden;";
+    const h3S    = "font-size:12px;font-weight:500;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff;";
+
     card.innerHTML = `
-      <div class="backdrop-card-image">
-        ${
-          backdropUrl
-            ? `<img src="${backdropUrl}" alt="${title}" class="backdrop-img">`
-            : `<div class="backdrop-placeholder"><i class="fas fa-star"></i></div>`
+      <div class="backdrop-card-image" style="${wrapS}">
+        ${backdropUrl
+          ? `<!-- spacer mantiene ratio 16:9 ANTES de que cargue la imagen real -->
+             <img src="${spacerSvg}" alt="" aria-hidden="true" style="${imgS}">
+             <img src="${backdropUrl}" alt="${title}" class="backdrop-img" style="${realS}">`
+          : `<!-- Sin backdrop: spacer SVG + ícono centrado -->
+             <img src="${spacerSvg}" alt="" aria-hidden="true" style="${imgS}">
+             <div style="${holdS}"><i class="fas fa-film"></i></div>`
         }
-        <div class="backdrop-card-badge">${type}</div>
-        <div class="backdrop-card-rating"><i class="fas fa-star" style="color:#f5c518;font-size:0.7rem;"></i> ${rating}</div>
-        <div class="backdrop-card-gradient"></div>
+        <div class="backdrop-card-badge" style="${badgeS}">${type}</div>
+        <div class="backdrop-card-rating" style="${rateS}">&#9733; ${rating}</div>
+        <div style="${gradS}"></div>
       </div>
-      <div class="backdrop-card-title"><h3>${title}</h3></div>`;
+      <div class="backdrop-card-title" style="${titlS}"><h3 style="${h3S}">${title}</h3></div>`;
+
     card.addEventListener("click", () => {
       showMovieDetailsModal(item.id, item.media_type);
     });
