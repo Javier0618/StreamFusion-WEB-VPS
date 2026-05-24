@@ -4727,6 +4727,7 @@ footer p {
 }
 
 .related-card-rating {
+  display: none;
   position: absolute;
   top: 0.35rem;
   left: 0.35rem;
@@ -4744,6 +4745,7 @@ footer p {
 }
 
 .related-card-type {
+  display: none;
   position: absolute;
   bottom: 0.35rem;
   left: 0.35rem;
@@ -4756,6 +4758,7 @@ footer p {
 }
 
 .related-card-year {
+  display: none;
   position: absolute;
   bottom: 0.35rem;
   right: 0.35rem;
