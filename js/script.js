@@ -5878,18 +5878,53 @@ function handleSearch() {
 
 function buildSearchEmptyState(query) {
   return `
-    <div class="search-empty-state">
-      <div class="search-empty-icon">
+    <div style="
+      grid-column: 1 / -1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 4rem 1.5rem;
+      text-align: center;
+      gap: 0.85rem;
+    ">
+      <div style="
+        position: relative;
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background: rgba(255, 107, 0, 0.12);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2rem;
+        color: var(--secondary-color, #ff6b00);
+        margin-bottom: 0.25rem;
+      ">
         <i class="fas fa-search"></i>
-        <span class="search-empty-x"><i class="fas fa-times"></i></span>
+        <span style="
+          position: absolute;
+          bottom: -2px;
+          right: -2px;
+          width: 26px;
+          height: 26px;
+          border-radius: 50%;
+          background: #e53e3e;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 0.65rem;
+          color: #fff;
+          font-weight: 700;
+        "><i class="fas fa-times"></i></span>
       </div>
-      <p class="search-empty-title">${getText("search.noResults")}</p>
-      <p class="search-empty-query">"${query}"</p>
-      <p class="search-empty-hint">${getText("search.noResultsHint")}</p>
-      <ul class="search-empty-tips">
-        <li><i class="fas fa-lightbulb"></i> ${getText("search.noResultsTip1")}</li>
-        <li><i class="fas fa-lightbulb"></i> ${getText("search.noResultsTip2")}</li>
-        <li><i class="fas fa-lightbulb"></i> ${getText("search.noResultsTip3")}</li>
+      <p style="font-size:1.15rem;font-weight:700;color:#fff;margin:0;">${getText("search.noResults")}</p>
+      <p style="font-size:0.95rem;color:#ff6b00;font-style:italic;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin:0;">"${query}"</p>
+      <p style="color:#aaa;font-size:0.88rem;max-width:360px;line-height:1.5;margin:0.25rem 0 0.5rem;">${getText("search.noResultsHint")}</p>
+      <ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:0.5rem;text-align:left;">
+        <li style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem;color:#aaa;"><i class="fas fa-lightbulb" style="color:#ff6b00;font-size:0.75rem;flex-shrink:0;"></i> ${getText("search.noResultsTip1")}</li>
+        <li style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem;color:#aaa;"><i class="fas fa-lightbulb" style="color:#ff6b00;font-size:0.75rem;flex-shrink:0;"></i> ${getText("search.noResultsTip2")}</li>
+        <li style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem;color:#aaa;"><i class="fas fa-lightbulb" style="color:#ff6b00;font-size:0.75rem;flex-shrink:0;"></i> ${getText("search.noResultsTip3")}</li>
       </ul>
     </div>
   `;
