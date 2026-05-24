@@ -43,7 +43,8 @@ const apiCache = new Map();
 document.addEventListener("DOMContentLoaded", () => {
   const logoContainerImg = document.querySelector(".logo-container img");
   if (logoContainerImg) {
-    logoContainerImg.src = "https://raw.githubusercontent.com/Javier0618/Imagenes/main/SFusionLogo.png";
+    logoContainerImg.src =
+      "https://raw.githubusercontent.com/Javier0618/Imagenes/main/SFusionLogo.png";
   }
 
   const logoText = document.querySelector(".logo-text");
@@ -53,18 +54,21 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const authLogoImg = document.querySelector(".auth-logo img");
   if (authLogoImg) {
-    authLogoImg.src = "https://raw.githubusercontent.com/Javier0618/Imagenes/main/SFusionLogo.png";
+    authLogoImg.src =
+      "https://raw.githubusercontent.com/Javier0618/Imagenes/main/SFusionLogo.png";
   }
 
   const textLogoImg = document.querySelector(".text-logo img");
   if (textLogoImg) {
-    textLogoImg.src = "https://raw.githubusercontent.com/Javier0618/Imagenes/main/SFusion.png";
+    textLogoImg.src =
+      "https://raw.githubusercontent.com/Javier0618/Imagenes/main/SFusion.png";
   }
 
   // Inyectar imagen de splash dinámicamente (solo el inicial del HTML)
   const splashImg = document.getElementById("splash-image");
   if (splashImg) {
-    splashImg.src = "https://raw.githubusercontent.com/Javier0618/Imagenes/main/Splash-SF.jpg";
+    splashImg.src =
+      "https://raw.githubusercontent.com/Javier0618/Imagenes/main/Splash-SF.jpg";
   }
 });
 
@@ -156,6 +160,7 @@ const translations = {
     "management.sectionTypeView": "Vista",
     "management.sectionTypeAdScript": "Anuncio (Script)",
     "management.sectionTypeAdVideo": "Anuncio (Video Emergente)",
+    "management.sectionTypeRandom": "Aleatorio",
     "management.noHomeSections": "No se han creado secciones de inicio.",
     "management.loadHomeSectionsError":
       "Error al cargar las secciones de inicio. Asegúrate de que los índices de Firestore están configurados.",
@@ -408,6 +413,10 @@ const translations = {
     "search.emptyQueryTitle": "Búsqueda Vacía",
     "search.emptyQueryText": "Por favor, introduce un término de búsqueda.",
     "search.noResults": "No se encontraron resultados.",
+    "search.noResultsHint": "Intenta con otro término o revisa la ortografía.",
+    "search.noResultsTip1": "Usa palabras clave más generales",
+    "search.noResultsTip2": "Verifica que el título esté bien escrito",
+    "search.noResultsTip3": "Prueba en inglés o el idioma original",
     "search.resultsFor": "Resultados para:",
     "tmdb.searchError": "Error al buscar en TMDB",
     "tmdb.searchErrorTitle": "Error de Búsqueda",
@@ -745,6 +754,10 @@ const translations = {
     "search.emptyQueryTitle": "Empty Search",
     "search.emptyQueryText": "Please enter a search term.",
     "search.noResults": "No results found.",
+    "search.noResultsHint": "Try a different term or check your spelling.",
+    "search.noResultsTip1": "Use more general keywords",
+    "search.noResultsTip2": "Check that the title is spelled correctly",
+    "search.noResultsTip3": "Try searching in English or the original language",
     "search.resultsFor": "Results for:",
     "tmdb.searchError": "Error searching TMDB",
     "tmdb.searchErrorTitle": "Search Error",
@@ -1093,6 +1106,8 @@ let webSettings = {
     peliculasPopulares: 20,
     seriesPopulares: 20,
   },
+  showDonationButton: true,
+  floatingButtons: [],
 };
 let currentCategory = "inicio";
 let currentService = null;
@@ -1213,6 +1228,7 @@ async function initApp() {
     try {
       await loadWebSettings();
       applyStaticTranslations();
+      applyFloatingButtonSettings();
       initEventListeners();
       initAuth();
     } catch (error) {
@@ -3224,10 +3240,6 @@ function createContentCard(
     cardHTML = `
             <div class="grid-poster-wrapper">
                 <img src="${posterPath}" alt="${title}" class="grid-poster">
-                <div class="grid-rating">${rating}</div>
-                ${qualityBadge}
-                ${languageBadge}
-                <div class="grid-badge">${type}</div>
                 <div class="my-list-overlay">
                     <button class="my-list-remove-btn" title="${getText("actions.removeFromList")}">
                         <i class="fas fa-trash-alt"></i>
@@ -3243,10 +3255,6 @@ function createContentCard(
     cardHTML = `
             <div class="grid-poster-wrapper">
                 <img src="${posterPath}" alt="${title}" class="grid-poster">
-                <div class="grid-rating">${rating}</div>
-                ${qualityBadge}
-                ${languageBadge}
-                <div class="grid-badge">${type}</div>
                 <div class="grid-actions">
                     <button class="grid-btn play-btn" title="${getText("actions.watchNow")}"><i class="fas fa-play"></i></button>
                     <button class="grid-btn info-btn" title="${getText("actions.info")}"><i class="fas fa-info"></i></button>
@@ -3260,15 +3268,9 @@ function createContentCard(
     cardHTML = `
             <div class="card-poster-wrapper">
                 <img src="${posterPath}" alt="${title}" class="card-poster">
-                <div class="card-rating">${rating}</div>
-                ${qualityBadge}
-                ${languageBadge}
-                <div class="card-badge">${type}</div>
-                ${sliderId === "en-estreno-slider" ? '<div class="card-estreno-diagonal"></div>' : ""}
-                ${sliderId === "recently-added-slider" ? `<div class="card-nuevo-pegatina">${getText("content.newSticker")}</div>` : ""}
             </div>
-            <div class="card-title-bottom">
-                <h3>${title}</h3>
+            <div class="card-title-bottom" style="padding:0.4rem 0 0;height:1.4rem;overflow:hidden;width:100%;display:block;">
+                <h3 style="font-size:0.8rem;font-weight:500;color:var(--text-color);margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;display:block;line-height:1.2;">${title}</h3>
             </div>
             <div class="card-overlay" style="display: none;">
                 <div class="card-actions">
@@ -4244,6 +4246,9 @@ window.navigateToView = async function navigateToView(view) {
   isNavigating = true;
 
   try {
+    // Restaurar header normal si veníamos de una categoría
+    if (view !== "genre-results") exitCategoryHeader();
+
     // LIMPIEZA TOTAL DE ESTADOS ACTIVOS (Para evitar duplicados entre clics y swipe)
     document
       .querySelectorAll(".page-view")
@@ -5036,6 +5041,38 @@ async function renderDynamicSections() {
             shuffleArray(viewContent).slice(0, 20),
           );
           break;
+        case "random":
+          sectionEl.innerHTML = `
+            <div class="row-header">
+              <h2 class="section-title">${section.title}</h2>
+            </div>
+            <div class="content-slider backdrop-slider">
+              <div class="slider-container" id="slider-${section.id}"></div>
+              <div class="slider-controls">
+                <button class="slider-arrow slider-prev" aria-label="Anterior"><i class="fas fa-chevron-left"></i></button>
+                <button class="slider-arrow slider-next" aria-label="Siguiente"><i class="fas fa-chevron-right"></i></button>
+              </div>
+            </div>`;
+          container.appendChild(sectionEl);
+          const count = section.options?.count || 10;
+          const pinnedIds = section.options?.pinnedIds || [];
+          const pinned = pinnedIds
+            .map((id) =>
+              allContent.find((c) => c.id === id || c.id === Number(id)),
+            )
+            .filter(Boolean);
+          const rest = shuffleArray(
+            allContent.filter(
+              (c) =>
+                !pinnedIds.some((pid) => pid === c.id || pid === Number(pid)),
+            ),
+          );
+          const randomFinal = [...pinned, ...rest].slice(0, count);
+          await renderBackdropSlider(
+            document.getElementById(`slider-${section.id}`),
+            randomFinal,
+          );
+          break;
         case "ad_script":
           const adScriptContainer = document.createElement("div");
           adScriptContainer.className = "ad-script-section";
@@ -5238,6 +5275,93 @@ async function renderContentSlider(sliderElement, content) {
   });
 }
 
+async function renderBackdropSlider(sliderElement, content) {
+  sliderElement.innerHTML = "";
+  const translatedContent = await translateContentToDisplayLanguage(content);
+  if (translatedContent.length === 0) {
+    const emptyState = document.createElement("div");
+    emptyState.className = "empty-state";
+    emptyState.innerHTML = `
+      <i class="fas fa-film empty-icon"></i>
+      <h3 class="empty-title">${getText("content.emptyState.title")}</h3>
+      <p class="empty-text">${getText("content.emptyState.text")}</p>`;
+    sliderElement.appendChild(emptyState);
+    return;
+  }
+  // Ancho estándar calculado una sola vez para todos los cards del slider
+  const screenW = window.innerWidth;
+  const cardW = screenW <= 480 ? Math.round(screenW * 0.66) : 280;
+  const cardStyle = [
+    `flex:0 0 ${cardW}px`,
+    `width:${cardW}px`,
+    `min-width:${cardW}px`,
+    `max-width:${cardW}px`,
+    "margin:0 4px",
+    "border-radius:8px",
+    "overflow:hidden",
+    "cursor:pointer",
+    "display:inline-block",
+    "vertical-align:top",
+  ].join(";");
+
+  translatedContent.forEach((item) => {
+    const card = document.createElement("div");
+    card.className = "backdrop-card";
+    card.style.cssText = cardStyle;
+    card.dataset.id = item.id;
+    card.dataset.type = item.media_type;
+
+    const backdropUrl = item.backdrop_path
+      ? `${IMG_BASE_URL}/w780${item.backdrop_path}`
+      : null;
+    const title = item.title || item.name || getText("content.noTitle");
+    const rating = item.vote_average ? item.vote_average.toFixed(1) : "N/A";
+    const type =
+      item.media_type === "movie"
+        ? getText("content.type.movie")
+        : getText("content.type.series");
+
+    // ── Técnica "imagen natural" ──────────────────────────────────────────────
+    // La imagen backdrop de TMDB es 16:9. Al mostrarla con width:100%;height:auto
+    // la propia imagen define la altura del contenedor — sin trucos de CSS que
+    // fallen en Capacitor/Android. Los overlays (badge, rating, gradiente) se
+    // posicionan absolutamente sobre esa caja ya dimensionada.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // SVG 16:9 transparente (inline, sin petición de red) para cuando no hay backdrop
+    const spacerSvg = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 9'%3E%3C/svg%3E`;
+
+    const wrapS  = "position:relative;width:100%;overflow:hidden;background:#1a1a1a;border-radius:8px;display:block;";
+    const imgS   = "width:100%;height:auto;display:block;";
+    const realS  = "position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:block;";
+    const holdS  = "position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#1f1f1f;color:#555;font-size:2rem;";
+    const badgeS = "position:absolute;top:6px;left:6px;background:#e87722;color:#fff;font-size:11px;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase;z-index:3;line-height:1.4;";
+    const rateS  = "position:absolute;bottom:6px;right:6px;background:rgba(0,0,0,0.75);color:#fff;font-size:11px;font-weight:600;padding:2px 6px;border-radius:4px;z-index:3;line-height:1.4;";
+    const gradS  = "position:absolute;top:0;left:0;width:100%;height:100%;background:linear-gradient(to top,rgba(0,0,0,0.6) 0%,transparent 55%);pointer-events:none;z-index:2;";
+    const titlS  = "padding:5px 2px 0;overflow:hidden;width:100%;display:block;";
+    const h3S    = "font-size:12px;font-weight:500;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff;width:100%;display:block;";
+
+    card.innerHTML = `
+      <div class="backdrop-card-image" style="${wrapS}">
+        ${backdropUrl
+          ? `<!-- spacer mantiene ratio 16:9 ANTES de que cargue la imagen real -->
+             <img src="${spacerSvg}" alt="" aria-hidden="true" style="${imgS}">
+             <img src="${backdropUrl}" alt="${title}" class="backdrop-img" style="${realS}">`
+          : `<!-- Sin backdrop: spacer SVG + ícono centrado -->
+             <img src="${spacerSvg}" alt="" aria-hidden="true" style="${imgS}">
+             <div style="${holdS}"><i class="fas fa-film"></i></div>`
+        }
+        <div style="${gradS}"></div>
+      </div>
+      <div class="backdrop-card-title" style="${titlS}"><h3 style="${h3S}">${title}</h3></div>`;
+
+    card.addEventListener("click", () => {
+      showMovieDetailsModal(item.id, item.media_type);
+    });
+    sliderElement.appendChild(card);
+  });
+}
+
 async function renderTrendingSlider(sliderElement, content) {
   sliderElement.innerHTML = "";
 
@@ -5287,8 +5411,6 @@ async function renderTrendingSlider(sliderElement, content) {
 
     card.innerHTML = `
             <img src="${posterPath}" alt="${title}" class="card-poster">
-            <div class="card-rating">${rating}</div>
-            <div class="card-badge">${type}</div>
             <div class="card-overlay">
                 <h3 class="card-title">${title}</h3>
                 <div class="card-info">
@@ -5746,11 +5868,69 @@ function handleSearch() {
     );
   });
 
-  setupContentPagination(
-    searchResults,
-    searchResultsGrid,
-    document.getElementById("load-more-search"),
-  );
+  if (searchResults.length === 0) {
+    searchResultsGrid.innerHTML = buildSearchEmptyState(query);
+  } else {
+    setupContentPagination(
+      searchResults,
+      searchResultsGrid,
+      document.getElementById("load-more-search"),
+    );
+  }
+}
+
+function buildSearchEmptyState(query) {
+  return `
+    <div style="
+      grid-column: 1 / -1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 4rem 1.5rem;
+      text-align: center;
+      gap: 0.85rem;
+    ">
+      <div style="
+        position: relative;
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background: rgba(255, 107, 0, 0.12);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2rem;
+        color: var(--secondary-color, #ff6b00);
+        margin-bottom: 0.25rem;
+      ">
+        <i class="fas fa-search"></i>
+        <span style="
+          position: absolute;
+          bottom: -2px;
+          right: -2px;
+          width: 26px;
+          height: 26px;
+          border-radius: 50%;
+          background: #e53e3e;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 0.65rem;
+          color: #fff;
+          font-weight: 700;
+        "><i class="fas fa-times"></i></span>
+      </div>
+      <p style="font-size:1.15rem;font-weight:700;color:#fff;margin:0;">${getText("search.noResults")}</p>
+      <p style="font-size:0.95rem;color:#ff6b00;font-style:italic;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin:0;">"${query}"</p>
+      <p style="color:#aaa;font-size:0.88rem;max-width:360px;line-height:1.5;margin:0.25rem 0 0.5rem;">${getText("search.noResultsHint")}</p>
+      <ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:0.5rem;text-align:left;">
+        <li style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem;color:#aaa;"><i class="fas fa-lightbulb" style="color:#ff6b00;font-size:0.75rem;flex-shrink:0;"></i> ${getText("search.noResultsTip1")}</li>
+        <li style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem;color:#aaa;"><i class="fas fa-lightbulb" style="color:#ff6b00;font-size:0.75rem;flex-shrink:0;"></i> ${getText("search.noResultsTip2")}</li>
+        <li style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem;color:#aaa;"><i class="fas fa-lightbulb" style="color:#ff6b00;font-size:0.75rem;flex-shrink:0;"></i> ${getText("search.noResultsTip3")}</li>
+      </ul>
+    </div>
+  `;
 }
 
 function normalizeString(str) {
@@ -5758,6 +5938,69 @@ function normalizeString(str) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
+}
+
+function enterCategoryHeader(name, onBack) {
+  if (window.innerWidth > 768) return;
+  const header = document.getElementById("header");
+  if (!header) return;
+
+  const logo = header.querySelector(".sfusion-logo");
+  const nav  = header.querySelector(".nav-links");
+  if (logo) logo.style.display = "none";
+  if (nav)  nav.style.display  = "none";
+
+  // Remove any previous injected elements
+  const oldBack  = header.querySelector("#cat-back-btn");
+  const oldTitle = header.querySelector("#cat-title");
+  if (oldBack)  oldBack.remove();
+  if (oldTitle) oldTitle.remove();
+
+  // Switch header to a 3-column grid: 25% | 50% | 25%
+  header.style.display             = "grid";
+  header.style.gridTemplateColumns = "1fr 2fr 1fr";
+  header.style.alignItems          = "center";
+
+  const backBtn = document.createElement("button");
+  backBtn.id = "cat-back-btn";
+  backBtn.style.cssText = "background:none;border:none;color:#fff;font-size:1.2rem;padding:0.4rem 0.8rem;cursor:pointer;display:flex;align-items:center;justify-content:flex-start;";
+  backBtn.innerHTML = '<i class="fas fa-arrow-left"></i>';
+  backBtn.addEventListener("click", onBack || (() => navigateToView(window.previousView || "home")));
+
+  const titleEl = document.createElement("span");
+  titleEl.id = "cat-title";
+  titleEl.style.cssText = "text-align:center;font-size:1rem;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+  titleEl.textContent = name;
+
+  // Insert back-btn and title before header-actions (3rd column)
+  const actions = header.querySelector(".header-actions");
+  if (actions) {
+    header.insertBefore(backBtn, actions);
+    header.insertBefore(titleEl, actions);
+  } else {
+    header.appendChild(backBtn);
+    header.appendChild(titleEl);
+  }
+}
+
+function exitCategoryHeader() {
+  const header = document.getElementById("header");
+  if (!header) return;
+
+  const backBtn  = header.querySelector("#cat-back-btn");
+  const titleEl  = header.querySelector("#cat-title");
+  const logo     = header.querySelector(".sfusion-logo");
+  const nav      = header.querySelector(".nav-links");
+
+  if (backBtn)  backBtn.remove();
+  if (titleEl)  titleEl.remove();
+  if (logo)     logo.style.display = "";
+  if (nav)      nav.style.display  = "";
+
+  // Restore header to its original flex layout
+  header.style.display             = "";
+  header.style.gridTemplateColumns = "";
+  header.style.alignItems          = "";
 }
 
 async function handleCategoryClick(e) {
@@ -5772,6 +6015,7 @@ async function handleCategoryClick(e) {
 
   navigateToView("genre-results");
   genreTitle.textContent = `${getText("genres.genreLabel")}: ${genreName}`;
+  enterCategoryHeader(genreName);
   showSpinner();
   try {
     // Use the cached 'allContent' array and filter by genre
@@ -5794,6 +6038,14 @@ async function handleCategoryClick(e) {
   }
 }
 
+const SERVICE_DISPLAY_NAMES = {
+  netflix:   "Netflix",
+  disney:    "Disney+",
+  hbo:       "HBO Max",
+  prime:     "Prime Video",
+  paramount: "Paramount+",
+};
+
 async function handleServiceClick(e) {
   const service = e.currentTarget.dataset.service;
 
@@ -5807,7 +6059,8 @@ async function handleServiceClick(e) {
   e.currentTarget.classList.add("active");
   currentService = service;
   navigateToView(service);
-  servicesBackBtn.style.display = "block";
+  enterCategoryHeader(SERVICE_DISPLAY_NAMES[service] || service, resetServices);
+  servicesBackBtn.style.display = "none";
 }
 
 function toggleBackToTop() {
@@ -7245,7 +7498,9 @@ function renderTmdbSearchResults(results) {
   resultsContainer.innerHTML = "";
 
   if (results.length === 0) {
-    resultsContainer.innerHTML = `<p>${getText("search.noResults")}</p>`;
+    const tmdbInput = document.getElementById("tmdb-search-input");
+    const q = tmdbInput ? tmdbInput.value.trim() : "";
+    resultsContainer.innerHTML = buildSearchEmptyState(q);
     return;
   }
 
@@ -7950,6 +8205,77 @@ async function loadWebSettings() {
   }
 }
 
+// Event delegation for the "Agregar Botón" button (works even if button is re-rendered)
+document.addEventListener("click", function (e) {
+  if (e.target.closest("#add-floating-btn")) {
+    const current = getFloatingButtonsFromForm();
+    renderFloatingButtonsAdminList([...current, { icon: "fa-link", label: "", url: "", enabled: true }]);
+  }
+});
+
+function renderFloatingButtonsAdminList(buttons) {
+  const list = document.getElementById("floating-buttons-list");
+  if (!list) return;
+  if (!buttons.length) { list.innerHTML = ""; return; }
+  list.innerHTML = buttons.map((btn, i) => `
+    <div class="fab-admin-row" data-index="${i}" style="display:flex;align-items:center;gap:8px;background:#1e1e1e;padding:10px;border-radius:8px;border:1px solid #333;">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0;">
+        <i class="fas ${btn.icon || 'fa-link'}" style="font-size:1.4rem;color:var(--secondary-color,#ff6b00);width:32px;text-align:center;"></i>
+        <input class="fab-icon form-input" placeholder="fa-download" value="${btn.icon || ''}" title="Clase del ícono Font Awesome (ej: fa-download)" style="width:100px;font-size:0.75rem;padding:4px 6px;background:#2a2a2a;border:1px solid #444;text-align:center;" oninput="this.previousElementSibling.className='fas '+this.value">
+      </div>
+      <input class="fab-label form-input" placeholder="Etiqueta (ej: Descargar App)" value="${btn.label || ''}" style="flex:1;background:#2a2a2a;border:1px solid #444;">
+      <input class="fab-url form-input" placeholder="https://..." value="${btn.url || ''}" style="flex:2;background:#2a2a2a;border:1px solid #444;">
+      <label style="display:flex;align-items:center;gap:5px;white-space:nowrap;cursor:pointer;font-size:0.85rem;">
+        <input type="checkbox" class="fab-enabled" ${btn.enabled !== false ? "checked" : ""} style="width:18px;height:18px;accent-color:var(--secondary-color);">
+        Activo
+      </label>
+      <button type="button" onclick="this.closest('.fab-admin-row').remove()" title="Eliminar" style="background:#c0392b;border:none;color:#fff;width:32px;height:32px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fas fa-trash" style="font-size:0.8rem;"></i>
+      </button>
+    </div>
+  `).join("");
+}
+
+function getFloatingButtonsFromForm() {
+  const rows = document.querySelectorAll(".fab-admin-row");
+  return Array.from(rows).map(row => ({
+    icon:    row.querySelector(".fab-icon").value.trim(),
+    label:   row.querySelector(".fab-label").value.trim(),
+    url:     row.querySelector(".fab-url").value.trim(),
+    enabled: row.querySelector(".fab-enabled").checked,
+  }));
+}
+
+function applyFloatingButtonSettings() {
+  const container = document.getElementById("custom-floating-buttons");
+  if (!container) return;
+
+  const customButtons = (webSettings.floatingButtons || [])
+    .filter(b => b.enabled !== false && b.url)
+    .map(btn => `
+      <div class="custom-fab" onclick="window.open('${btn.url.replace(/'/g,"&#39;")}','_blank')" title="${(btn.label || btn.url).replace(/"/g,'&quot;')}">
+        <i class="fas ${btn.icon || 'fa-link'}"></i>
+        ${btn.label ? `<span class="custom-fab-tooltip">${btn.label}</span>` : ""}
+      </div>
+    `).join("");
+
+  const paypalBtn = webSettings.showDonationButton !== false
+    ? `<div class="custom-fab" id="floating-donation-btn" style="background:var(--secondary-color,#ff6b00);border-color:var(--secondary-color,#ff6b00);" title="Donar con PayPal">
+        <i class="fa-brands fa-paypal"></i>
+        <span class="custom-fab-tooltip">Donar con PayPal</span>
+       </div>`
+    : "";
+
+  container.innerHTML = customButtons + paypalBtn;
+
+  // Re-wire PayPal click after DOM is rebuilt
+  const paypalEl = document.getElementById("floating-donation-btn");
+  const donationModal = document.getElementById("donation-modal");
+  if (paypalEl && donationModal) {
+    paypalEl.onclick = () => { donationModal.style.display = "block"; };
+  }
+}
+
 function populateSettingsForm() {
   if (!isAdmin || !settingsForm) return;
 
@@ -7986,6 +8312,13 @@ function populateSettingsForm() {
   `,
   ).join("");
 
+  // Donation button toggle
+  const showDonationCheckbox = document.getElementById("show-donation-btn");
+  if (showDonationCheckbox) showDonationCheckbox.checked = webSettings.showDonationButton !== false;
+
+  // Floating buttons admin list
+  renderFloatingButtonsAdminList(webSettings.floatingButtons || []);
+
   // Visible Platforms
   const platforms = [
     { name: "Netflix", id: "netflix" },
@@ -8015,6 +8348,7 @@ async function saveWebSettings(e) {
 
   showSpinner();
   try {
+    const showDonationCheckbox = document.getElementById("show-donation-btn");
     const newSettings = {
       importLanguage: importLanguageSelect.value,
       displayLanguage: displayLanguageSelect.value,
@@ -8035,6 +8369,8 @@ async function saveWebSettings(e) {
         peliculasPopulares: parseInt(postersPeliculasPopularesInput.value),
         seriesPopulares: parseInt(postersSeriesPopularesInput.value),
       },
+      showDonationButton: showDonationCheckbox ? showDonationCheckbox.checked : true,
+      floatingButtons: getFloatingButtonsFromForm(),
     };
 
     const settingsRef = doc(db, "web_config", "settings");
@@ -8045,6 +8381,7 @@ async function saveWebSettings(e) {
     // Apply changes dynamically without reloading
     await loadAllContent();
     applyStaticTranslations();
+    applyFloatingButtonSettings();
     updateUIForLoggedInUser(); // To update dropdown text language if changed
 
     showMessageModal(
@@ -8400,6 +8737,7 @@ async function handleCategoryClickByType(e, contentType) {
 
   navigateToView("genre-results");
   genreTitle.textContent = `${getText("genres.genreLabel")}: ${categoryName}`;
+  enterCategoryHeader(categoryName);
   showSpinner();
   try {
     // Filtrar contenido por género Y tipo de contenido
@@ -8681,66 +9019,43 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // Código de donación encapsulado para evitar conflictos
 (function () {
-  // Función para inicializar el modal de donaciones
   function initDonationModal() {
-    // Referencias a elementos del DOM
-    var floatingDonationBtn = document.getElementById("floating-donation-btn");
     var donationModal = document.getElementById("donation-modal");
     var closeDonationModal = document.getElementById("close-donation-modal");
     var cancelDonation = document.getElementById("cancel-donation");
     var paypalDonateBtn = document.getElementById("paypal-donate-btn");
-    var modalOverlay = donationModal.querySelector(".modal-overlay");
 
-    // Verificar que todos los elementos existan
-    if (
-      !floatingDonationBtn ||
-      !donationModal ||
-      !closeDonationModal ||
-      !cancelDonation ||
-      !paypalDonateBtn
-    ) {
-      console.error(getText("donation.elementsNotFound"));
+    if (!donationModal || !closeDonationModal || !cancelDonation || !paypalDonateBtn) {
       return;
     }
 
-    // Función para abrir el modal
-    function openModal() {
-      donationModal.style.display = "block";
-    }
+    var modalOverlay = donationModal.querySelector(".modal-overlay");
 
-    // Función para cerrar el modal
-    function closeModal() {
-      donationModal.style.display = "none";
-    }
-
-    // Función para abrir PayPal
+    function openModal() { donationModal.style.display = "block"; }
+    function closeModal() { donationModal.style.display = "none"; }
     function openPayPal() {
-      window.open(
-        "https://www.paypal.com/donate/?hosted_button_id=8TVX4VWNBWVM4",
-        "_blank",
-      );
+      window.open("https://www.paypal.com/donate/?hosted_button_id=8TVX4VWNBWVM4", "_blank");
     }
 
-    // Agregar event listeners
-    floatingDonationBtn.onclick = openModal; // CAMBIO AQUÍ
+    // The floating PayPal button is dynamic — use document-level delegation
+    document.addEventListener("click", function (e) {
+      if (e.target.closest("#floating-donation-btn")) openModal();
+    });
+
     closeDonationModal.onclick = closeModal;
     cancelDonation.onclick = closeModal;
     paypalDonateBtn.onclick = openPayPal;
 
-    // Cerrar al hacer clic en el overlay
-    modalOverlay.onclick = function (e) {
-      if (e.target === modalOverlay) {
-        closeModal();
-      }
-    };
+    if (modalOverlay) {
+      modalOverlay.onclick = function (e) {
+        if (e.target === modalOverlay) closeModal();
+      };
+    }
   }
 
-  // Verificar si el DOM ya está cargado
   if (document.readyState === "loading") {
-    // Si no está cargado, usar el evento load
     window.addEventListener("load", initDonationModal);
   } else {
-    // Si ya está cargado, ejecutar directamente
     initDonationModal();
   }
 })();
@@ -8918,6 +9233,7 @@ function openSectionModal(section = null, collectionName) {
       <option value="view" data-translate="management.sectionTypeView">Vista</option>
       <option value="ad_script" data-translate="management.sectionTypeAdScript">Anuncio (Script)</option>
       <option value="ad_video" data-translate="management.sectionTypeAdVideo">Anuncio (Video Emergente)</option>
+      <option value="random" data-translate="management.sectionTypeRandom">Aleatorio</option>
     `;
   }
 
@@ -9035,6 +9351,97 @@ function renderSectionOptions(type, options = {}) {
         document.getElementById("section-view").value = options.view;
       }
       break;
+    case "random": {
+      const existingPinnedIds = options.pinnedIds || [];
+      container.innerHTML = `
+        <div class="form-group">
+          <label style="color:var(--text-secondary);font-size:0.9rem;">Cantidad de posters a mostrar</label>
+          <input type="number" id="random-count" class="form-input" min="4" max="40" value="${options.count || 10}" style="width:90px;margin-top:6px;">
+        </div>
+        <div class="form-group" style="margin-top:14px;">
+          <label style="color:var(--text-secondary);font-size:0.9rem;">Fijar títulos específicos <span style="color:#666;">(siempre aparecerán)</span></label>
+          <input type="text" id="random-pin-search" class="form-input" placeholder="Buscar película o serie..." style="margin-top:6px;">
+          <div id="random-pin-results" style="max-height:180px;overflow-y:auto;background:#141414;border-radius:6px;margin-top:4px;display:none;border:1px solid #2d2d2d;"></div>
+          <div id="random-pinned-list" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;"></div>
+        </div>`;
+      let currentPinnedIds = [...existingPinnedIds];
+      const renderPinnedList = (ids) => {
+        const listEl = document.getElementById("random-pinned-list");
+        if (!listEl) return;
+        listEl.innerHTML = "";
+        ids.forEach((id) => {
+          const item = allContent.find(
+            (c) => c.id === id || c.id === Number(id),
+          );
+          if (!item) return;
+          const chip = document.createElement("div");
+          chip.className = "pinned-chip";
+          chip.innerHTML = `
+            ${item.poster_path ? `<img src="${IMG_BASE_URL}/w92${item.poster_path}" style="width:24px;height:36px;object-fit:cover;border-radius:3px;">` : ""}
+            <span>${item.title || item.name}</span>
+            <button type="button" data-id="${id}" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:1rem;line-height:1;padding:0 2px;">×</button>`;
+          chip.querySelector("button").addEventListener("click", () => {
+            currentPinnedIds = currentPinnedIds.filter(
+              (pid) => pid !== id && pid !== Number(id),
+            );
+            renderPinnedList(currentPinnedIds);
+          });
+          listEl.appendChild(chip);
+        });
+      };
+      renderPinnedList(currentPinnedIds);
+      const searchInput = document.getElementById("random-pin-search");
+      const resultsEl = document.getElementById("random-pin-results");
+      searchInput.addEventListener("input", () => {
+        const q = searchInput.value.trim().toLowerCase();
+        if (!q) {
+          resultsEl.style.display = "none";
+          return;
+        }
+        const matches = allContent
+          .filter((item) => {
+            const t = (item.title || item.name || "").toLowerCase();
+            return t.includes(q);
+          })
+          .slice(0, 8);
+        resultsEl.innerHTML = "";
+        if (matches.length === 0) {
+          resultsEl.innerHTML = `<p style="padding:10px;color:#666;font-size:0.85rem;">Sin resultados</p>`;
+        } else {
+          matches.forEach((item) => {
+            const alreadyPinned = currentPinnedIds.some(
+              (pid) => pid === item.id || pid === Number(item.id),
+            );
+            const row = document.createElement("div");
+            row.style.cssText =
+              "display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;border-bottom:1px solid #222;";
+            row.innerHTML = `
+              ${item.poster_path ? `<img src="${IMG_BASE_URL}/w92${item.poster_path}" style="width:28px;height:42px;object-fit:cover;border-radius:3px;flex-shrink:0;">` : `<div style="width:28px;height:42px;background:#2a2a2a;border-radius:3px;flex-shrink:0;"></div>`}
+              <span style="flex:1;font-size:0.85rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${item.title || item.name}</span>
+              <span style="font-size:0.72rem;color:#888;flex-shrink:0;">${item.media_type === "movie" ? "Película" : "Serie"}</span>
+              ${alreadyPinned ? `<i class="fas fa-check" style="color:var(--secondary-color);flex-shrink:0;"></i>` : ""}`;
+            if (!alreadyPinned) {
+              row.addEventListener("click", () => {
+                currentPinnedIds.push(item.id);
+                renderPinnedList(currentPinnedIds);
+                searchInput.value = "";
+                resultsEl.style.display = "none";
+              });
+              row.addEventListener("mouseenter", () => {
+                row.style.background = "#1f1f1f";
+              });
+              row.addEventListener("mouseleave", () => {
+                row.style.background = "";
+              });
+            }
+            resultsEl.appendChild(row);
+          });
+        }
+        resultsEl.style.display = "block";
+      });
+      container._getPinnedIds = () => currentPinnedIds;
+      break;
+    }
     case "ad_script":
       container.innerHTML = `
         <div class="form-group">
@@ -9193,6 +9600,15 @@ async function saveSection() {
     case "ad_video":
       options.videoUrl = document.getElementById("section-ad-video-url").value;
       break;
+    case "random": {
+      options.count =
+        parseInt(document.getElementById("random-count")?.value) || 10;
+      const sectionOptsEl = document.getElementById("section-options");
+      options.pinnedIds = sectionOptsEl._getPinnedIds
+        ? sectionOptsEl._getPinnedIds()
+        : [];
+      break;
+    }
     case "ad_script_modal":
       options.script = document.getElementById("section-ad-script").value;
       options.position = document.getElementById("section-position").value;
