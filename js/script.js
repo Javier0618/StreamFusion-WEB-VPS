@@ -1106,6 +1106,8 @@ let webSettings = {
     peliculasPopulares: 20,
     seriesPopulares: 20,
   },
+  showDonationButton: true,
+  floatingButtons: [],
 };
 let currentCategory = "inicio";
 let currentService = null;
@@ -1226,6 +1228,7 @@ async function initApp() {
     try {
       await loadWebSettings();
       applyStaticTranslations();
+      applyFloatingButtonSettings();
       initEventListeners();
       initAuth();
     } catch (error) {
@@ -8202,6 +8205,77 @@ async function loadWebSettings() {
   }
 }
 
+// Event delegation for the "Agregar Botón" button (works even if button is re-rendered)
+document.addEventListener("click", function (e) {
+  if (e.target.closest("#add-floating-btn")) {
+    const current = getFloatingButtonsFromForm();
+    renderFloatingButtonsAdminList([...current, { icon: "fa-link", label: "", url: "", enabled: true }]);
+  }
+});
+
+function renderFloatingButtonsAdminList(buttons) {
+  const list = document.getElementById("floating-buttons-list");
+  if (!list) return;
+  if (!buttons.length) { list.innerHTML = ""; return; }
+  list.innerHTML = buttons.map((btn, i) => `
+    <div class="fab-admin-row" data-index="${i}" style="display:flex;align-items:center;gap:8px;background:#1e1e1e;padding:10px;border-radius:8px;border:1px solid #333;">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0;">
+        <i class="fas ${btn.icon || 'fa-link'}" style="font-size:1.4rem;color:var(--secondary-color,#ff6b00);width:32px;text-align:center;"></i>
+        <input class="fab-icon form-input" placeholder="fa-download" value="${btn.icon || ''}" title="Clase del ícono Font Awesome (ej: fa-download)" style="width:100px;font-size:0.75rem;padding:4px 6px;background:#2a2a2a;border:1px solid #444;text-align:center;" oninput="this.previousElementSibling.className='fas '+this.value">
+      </div>
+      <input class="fab-label form-input" placeholder="Etiqueta (ej: Descargar App)" value="${btn.label || ''}" style="flex:1;background:#2a2a2a;border:1px solid #444;">
+      <input class="fab-url form-input" placeholder="https://..." value="${btn.url || ''}" style="flex:2;background:#2a2a2a;border:1px solid #444;">
+      <label style="display:flex;align-items:center;gap:5px;white-space:nowrap;cursor:pointer;font-size:0.85rem;">
+        <input type="checkbox" class="fab-enabled" ${btn.enabled !== false ? "checked" : ""} style="width:18px;height:18px;accent-color:var(--secondary-color);">
+        Activo
+      </label>
+      <button type="button" onclick="this.closest('.fab-admin-row').remove()" title="Eliminar" style="background:#c0392b;border:none;color:#fff;width:32px;height:32px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fas fa-trash" style="font-size:0.8rem;"></i>
+      </button>
+    </div>
+  `).join("");
+}
+
+function getFloatingButtonsFromForm() {
+  const rows = document.querySelectorAll(".fab-admin-row");
+  return Array.from(rows).map(row => ({
+    icon:    row.querySelector(".fab-icon").value.trim(),
+    label:   row.querySelector(".fab-label").value.trim(),
+    url:     row.querySelector(".fab-url").value.trim(),
+    enabled: row.querySelector(".fab-enabled").checked,
+  }));
+}
+
+function applyFloatingButtonSettings() {
+  const container = document.getElementById("custom-floating-buttons");
+  if (!container) return;
+
+  const customButtons = (webSettings.floatingButtons || [])
+    .filter(b => b.enabled !== false && b.url)
+    .map(btn => `
+      <div class="custom-fab" onclick="window.open('${btn.url.replace(/'/g,"&#39;")}','_blank')" title="${(btn.label || btn.url).replace(/"/g,'&quot;')}">
+        <i class="fas ${btn.icon || 'fa-link'}"></i>
+        ${btn.label ? `<span class="custom-fab-tooltip">${btn.label}</span>` : ""}
+      </div>
+    `).join("");
+
+  const paypalBtn = webSettings.showDonationButton !== false
+    ? `<div class="custom-fab" id="floating-donation-btn" style="background:var(--secondary-color,#ff6b00);border-color:var(--secondary-color,#ff6b00);" title="Donar con PayPal">
+        <i class="fa-brands fa-paypal"></i>
+        <span class="custom-fab-tooltip">Donar con PayPal</span>
+       </div>`
+    : "";
+
+  container.innerHTML = customButtons + paypalBtn;
+
+  // Re-wire PayPal click after DOM is rebuilt
+  const paypalEl = document.getElementById("floating-donation-btn");
+  const donationModal = document.getElementById("donation-modal");
+  if (paypalEl && donationModal) {
+    paypalEl.onclick = () => { donationModal.style.display = "block"; };
+  }
+}
+
 function populateSettingsForm() {
   if (!isAdmin || !settingsForm) return;
 
@@ -8238,6 +8312,13 @@ function populateSettingsForm() {
   `,
   ).join("");
 
+  // Donation button toggle
+  const showDonationCheckbox = document.getElementById("show-donation-btn");
+  if (showDonationCheckbox) showDonationCheckbox.checked = webSettings.showDonationButton !== false;
+
+  // Floating buttons admin list
+  renderFloatingButtonsAdminList(webSettings.floatingButtons || []);
+
   // Visible Platforms
   const platforms = [
     { name: "Netflix", id: "netflix" },
@@ -8267,6 +8348,7 @@ async function saveWebSettings(e) {
 
   showSpinner();
   try {
+    const showDonationCheckbox = document.getElementById("show-donation-btn");
     const newSettings = {
       importLanguage: importLanguageSelect.value,
       displayLanguage: displayLanguageSelect.value,
@@ -8287,6 +8369,8 @@ async function saveWebSettings(e) {
         peliculasPopulares: parseInt(postersPeliculasPopularesInput.value),
         seriesPopulares: parseInt(postersSeriesPopularesInput.value),
       },
+      showDonationButton: showDonationCheckbox ? showDonationCheckbox.checked : true,
+      floatingButtons: getFloatingButtonsFromForm(),
     };
 
     const settingsRef = doc(db, "web_config", "settings");
@@ -8297,6 +8381,7 @@ async function saveWebSettings(e) {
     // Apply changes dynamically without reloading
     await loadAllContent();
     applyStaticTranslations();
+    applyFloatingButtonSettings();
     updateUIForLoggedInUser(); // To update dropdown text language if changed
 
     showMessageModal(
@@ -8934,66 +9019,43 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // Código de donación encapsulado para evitar conflictos
 (function () {
-  // Función para inicializar el modal de donaciones
   function initDonationModal() {
-    // Referencias a elementos del DOM
-    var floatingDonationBtn = document.getElementById("floating-donation-btn");
     var donationModal = document.getElementById("donation-modal");
     var closeDonationModal = document.getElementById("close-donation-modal");
     var cancelDonation = document.getElementById("cancel-donation");
     var paypalDonateBtn = document.getElementById("paypal-donate-btn");
-    var modalOverlay = donationModal.querySelector(".modal-overlay");
 
-    // Verificar que todos los elementos existan
-    if (
-      !floatingDonationBtn ||
-      !donationModal ||
-      !closeDonationModal ||
-      !cancelDonation ||
-      !paypalDonateBtn
-    ) {
-      console.error(getText("donation.elementsNotFound"));
+    if (!donationModal || !closeDonationModal || !cancelDonation || !paypalDonateBtn) {
       return;
     }
 
-    // Función para abrir el modal
-    function openModal() {
-      donationModal.style.display = "block";
-    }
+    var modalOverlay = donationModal.querySelector(".modal-overlay");
 
-    // Función para cerrar el modal
-    function closeModal() {
-      donationModal.style.display = "none";
-    }
-
-    // Función para abrir PayPal
+    function openModal() { donationModal.style.display = "block"; }
+    function closeModal() { donationModal.style.display = "none"; }
     function openPayPal() {
-      window.open(
-        "https://www.paypal.com/donate/?hosted_button_id=8TVX4VWNBWVM4",
-        "_blank",
-      );
+      window.open("https://www.paypal.com/donate/?hosted_button_id=8TVX4VWNBWVM4", "_blank");
     }
 
-    // Agregar event listeners
-    floatingDonationBtn.onclick = openModal; // CAMBIO AQUÍ
+    // The floating PayPal button is dynamic — use document-level delegation
+    document.addEventListener("click", function (e) {
+      if (e.target.closest("#floating-donation-btn")) openModal();
+    });
+
     closeDonationModal.onclick = closeModal;
     cancelDonation.onclick = closeModal;
     paypalDonateBtn.onclick = openPayPal;
 
-    // Cerrar al hacer clic en el overlay
-    modalOverlay.onclick = function (e) {
-      if (e.target === modalOverlay) {
-        closeModal();
-      }
-    };
+    if (modalOverlay) {
+      modalOverlay.onclick = function (e) {
+        if (e.target === modalOverlay) closeModal();
+      };
+    }
   }
 
-  // Verificar si el DOM ya está cargado
   if (document.readyState === "loading") {
-    // Si no está cargado, usar el evento load
     window.addEventListener("load", initDonationModal);
   } else {
-    // Si ya está cargado, ejecutar directamente
     initDonationModal();
   }
 })();
