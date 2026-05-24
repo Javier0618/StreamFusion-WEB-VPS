@@ -5871,41 +5871,66 @@ function normalizeString(str) {
     .toLowerCase();
 }
 
-function enterCategoryHeader(name) {
+function enterCategoryHeader(name, onBack) {
   const header = document.getElementById("header");
   if (!header) return;
+
   const logo = header.querySelector(".sfusion-logo");
   const nav  = header.querySelector(".nav-links");
   if (logo) logo.style.display = "none";
   if (nav)  nav.style.display  = "none";
-  const existing = header.querySelector("#cat-header-bar");
-  if (existing) existing.remove();
-  const bar = document.createElement("div");
-  bar.id = "cat-header-bar";
-  bar.style.cssText = "display:flex;align-items:center;flex:1;min-width:0;overflow:hidden;";
+
+  // Remove any previous injected elements
+  const oldBack  = header.querySelector("#cat-back-btn");
+  const oldTitle = header.querySelector("#cat-title");
+  if (oldBack)  oldBack.remove();
+  if (oldTitle) oldTitle.remove();
+
+  // Switch header to a 3-column grid: 25% | 50% | 25%
+  header.style.display             = "grid";
+  header.style.gridTemplateColumns = "1fr 2fr 1fr";
+  header.style.alignItems          = "center";
+
   const backBtn = document.createElement("button");
-  backBtn.style.cssText = "background:none;border:none;color:#fff;font-size:1.2rem;padding:0.4rem 0.6rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;";
+  backBtn.id = "cat-back-btn";
+  backBtn.style.cssText = "background:none;border:none;color:#fff;font-size:1.2rem;padding:0.4rem 0.8rem;cursor:pointer;display:flex;align-items:center;justify-content:flex-start;";
   backBtn.innerHTML = '<i class="fas fa-arrow-left"></i>';
-  backBtn.addEventListener("click", () => navigateToView(window.previousView || "home"));
+  backBtn.addEventListener("click", onBack || (() => navigateToView(window.previousView || "home")));
+
   const titleEl = document.createElement("span");
-  titleEl.style.cssText = "flex:1;text-align:center;font-size:1rem;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 0.5rem;";
+  titleEl.id = "cat-title";
+  titleEl.style.cssText = "text-align:center;font-size:1rem;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
   titleEl.textContent = name;
-  bar.appendChild(backBtn);
-  bar.appendChild(titleEl);
+
+  // Insert back-btn and title before header-actions (3rd column)
   const actions = header.querySelector(".header-actions");
-  if (actions) header.insertBefore(bar, actions);
-  else header.appendChild(bar);
+  if (actions) {
+    header.insertBefore(backBtn, actions);
+    header.insertBefore(titleEl, actions);
+  } else {
+    header.appendChild(backBtn);
+    header.appendChild(titleEl);
+  }
 }
 
 function exitCategoryHeader() {
   const header = document.getElementById("header");
   if (!header) return;
-  const bar  = header.querySelector("#cat-header-bar");
-  const logo = header.querySelector(".sfusion-logo");
-  const nav  = header.querySelector(".nav-links");
-  if (bar)  bar.remove();
-  if (logo) logo.style.display = "";
-  if (nav)  nav.style.display  = "";
+
+  const backBtn  = header.querySelector("#cat-back-btn");
+  const titleEl  = header.querySelector("#cat-title");
+  const logo     = header.querySelector(".sfusion-logo");
+  const nav      = header.querySelector(".nav-links");
+
+  if (backBtn)  backBtn.remove();
+  if (titleEl)  titleEl.remove();
+  if (logo)     logo.style.display = "";
+  if (nav)      nav.style.display  = "";
+
+  // Restore header to its original flex layout
+  header.style.display             = "";
+  header.style.gridTemplateColumns = "";
+  header.style.alignItems          = "";
 }
 
 async function handleCategoryClick(e) {
@@ -5943,6 +5968,14 @@ async function handleCategoryClick(e) {
   }
 }
 
+const SERVICE_DISPLAY_NAMES = {
+  netflix:   "Netflix",
+  disney:    "Disney+",
+  hbo:       "HBO Max",
+  prime:     "Prime Video",
+  paramount: "Paramount+",
+};
+
 async function handleServiceClick(e) {
   const service = e.currentTarget.dataset.service;
 
@@ -5956,7 +5989,8 @@ async function handleServiceClick(e) {
   e.currentTarget.classList.add("active");
   currentService = service;
   navigateToView(service);
-  servicesBackBtn.style.display = "block";
+  enterCategoryHeader(SERVICE_DISPLAY_NAMES[service] || service, resetServices);
+  servicesBackBtn.style.display = "none";
 }
 
 function toggleBackToTop() {
