@@ -1,15 +1,18 @@
-[build]
-  publish = "."
-  command = ""
-
 [[headers]]
   for = "/*"
   [headers.values]
     Access-Control-Allow-Origin = "*"
-    Access-Control-Allow-Methods = "GET, POST, OPTIONS"
+    Access-Control-Allow-Methods = "GET, OPTIONS"
     Access-Control-Allow-Headers = "Content-Type"
 
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
+[[headers]]
+  for = "/js/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Content-Type = "application/javascript"
+
+[[headers]]
+  for = "/style/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Content-Type = "text/css"
