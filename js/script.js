@@ -4235,6 +4235,9 @@ window.navigateToView = async function navigateToView(view) {
   isNavigating = true;
 
   try {
+    / Restaurar header normal si veníamos de una categoría
+    if (view !== "genre-results") exitCategoryHeader();
+    
     // LIMPIEZA TOTAL DE ESTADOS ACTIVOS (Para evitar duplicados entre clics y swipe)
     document
       .querySelectorAll(".page-view")
@@ -5868,6 +5871,42 @@ function normalizeString(str) {
     .toLowerCase();
 }
 
+function enterCategoryHeader(name) {
+  const header = document.getElementById("header");
+  if (!header) return;
+  const logo = header.querySelector(".sfusion-logo");
+  const nav  = header.querySelector(".nav-links");
+  if (logo) logo.style.display = "none";
+  if (nav)  nav.style.display  = "none";
+  const existing = header.querySelector("#cat-header-bar");
+  if (existing) existing.remove();
+  const bar = document.createElement("div");
+  bar.id = "cat-header-bar";
+  bar.style.cssText = "display:flex;align-items:center;flex:1;min-width:0;overflow:hidden;";
+  const backBtn = document.createElement("button");
+  backBtn.style.cssText = "background:none;border:none;color:#fff;font-size:1.2rem;padding:0.4rem 0.6rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;";
+  backBtn.innerHTML = '<i class="fas fa-arrow-left"></i>';
+  backBtn.addEventListener("click", () => navigateToView(window.previousView || "home"));
+  const titleEl = document.createElement("span");
+  titleEl.style.cssText = "flex:1;text-align:center;font-size:1rem;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 0.5rem;";
+  titleEl.textContent = name;
+  bar.appendChild(backBtn);
+  bar.appendChild(titleEl);
+  const actions = header.querySelector(".header-actions");
+  if (actions) header.insertBefore(bar, actions);
+  else header.appendChild(bar);
+}
+function exitCategoryHeader() {
+  const header = document.getElementById("header");
+  if (!header) return;
+  const bar  = header.querySelector("#cat-header-bar");
+  const logo = header.querySelector(".sfusion-logo");
+  const nav  = header.querySelector(".nav-links");
+  if (bar)  bar.remove();
+  if (logo) logo.style.display = "";
+  if (nav)  nav.style.display  = "";
+}
+
 async function handleCategoryClick(e) {
   e.preventDefault();
   e.stopPropagation();
@@ -5880,6 +5919,7 @@ async function handleCategoryClick(e) {
 
   navigateToView("genre-results");
   genreTitle.textContent = `${getText("genres.genreLabel")}: ${genreName}`;
+  enterCategoryHeader(genreName);
   showSpinner();
   try {
     // Use the cached 'allContent' array and filter by genre
@@ -8508,6 +8548,7 @@ async function handleCategoryClickByType(e, contentType) {
 
   navigateToView("genre-results");
   genreTitle.textContent = `${getText("genres.genreLabel")}: ${categoryName}`;
+  enterCategoryHeader(categoryName);
   showSpinner();
   try {
     // Filtrar contenido por género Y tipo de contenido
