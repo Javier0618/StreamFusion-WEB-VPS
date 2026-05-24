@@ -413,6 +413,10 @@ const translations = {
     "search.emptyQueryTitle": "Búsqueda Vacía",
     "search.emptyQueryText": "Por favor, introduce un término de búsqueda.",
     "search.noResults": "No se encontraron resultados.",
+    "search.noResultsHint": "Intenta con otro término o revisa la ortografía.",
+    "search.noResultsTip1": "Usa palabras clave más generales",
+    "search.noResultsTip2": "Verifica que el título esté bien escrito",
+    "search.noResultsTip3": "Prueba en inglés o el idioma original",
     "search.resultsFor": "Resultados para:",
     "tmdb.searchError": "Error al buscar en TMDB",
     "tmdb.searchErrorTitle": "Error de Búsqueda",
@@ -750,6 +754,10 @@ const translations = {
     "search.emptyQueryTitle": "Empty Search",
     "search.emptyQueryText": "Please enter a search term.",
     "search.noResults": "No results found.",
+    "search.noResultsHint": "Try a different term or check your spelling.",
+    "search.noResultsTip1": "Use more general keywords",
+    "search.noResultsTip2": "Check that the title is spelled correctly",
+    "search.noResultsTip3": "Try searching in English or the original language",
     "search.resultsFor": "Results for:",
     "tmdb.searchError": "Error searching TMDB",
     "tmdb.searchErrorTitle": "Search Error",
@@ -5857,11 +5865,34 @@ function handleSearch() {
     );
   });
 
-  setupContentPagination(
-    searchResults,
-    searchResultsGrid,
-    document.getElementById("load-more-search"),
-  );
+  if (searchResults.length === 0) {
+    searchResultsGrid.innerHTML = buildSearchEmptyState(query);
+  } else {
+    setupContentPagination(
+      searchResults,
+      searchResultsGrid,
+      document.getElementById("load-more-search"),
+    );
+  }
+}
+
+function buildSearchEmptyState(query) {
+  return `
+    <div class="search-empty-state">
+      <div class="search-empty-icon">
+        <i class="fas fa-search"></i>
+        <span class="search-empty-x"><i class="fas fa-times"></i></span>
+      </div>
+      <p class="search-empty-title">${getText("search.noResults")}</p>
+      <p class="search-empty-query">"${query}"</p>
+      <p class="search-empty-hint">${getText("search.noResultsHint")}</p>
+      <ul class="search-empty-tips">
+        <li><i class="fas fa-lightbulb"></i> ${getText("search.noResultsTip1")}</li>
+        <li><i class="fas fa-lightbulb"></i> ${getText("search.noResultsTip2")}</li>
+        <li><i class="fas fa-lightbulb"></i> ${getText("search.noResultsTip3")}</li>
+      </ul>
+    </div>
+  `;
 }
 
 function normalizeString(str) {
@@ -7429,7 +7460,9 @@ function renderTmdbSearchResults(results) {
   resultsContainer.innerHTML = "";
 
   if (results.length === 0) {
-    resultsContainer.innerHTML = `<p>${getText("search.noResults")}</p>`;
+    const tmdbInput = document.getElementById("tmdb-search-input");
+    const q = tmdbInput ? tmdbInput.value.trim() : "";
+    resultsContainer.innerHTML = buildSearchEmptyState(q);
     return;
   }
 
