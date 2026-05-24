@@ -4235,9 +4235,9 @@ window.navigateToView = async function navigateToView(view) {
   isNavigating = true;
 
   try {
-    / Restaurar header normal si veníamos de una categoría
+    // Restaurar header normal si veníamos de una categoría
     if (view !== "genre-results") exitCategoryHeader();
-    
+
     // LIMPIEZA TOTAL DE ESTADOS ACTIVOS (Para evitar duplicados entre clics y swipe)
     document
       .querySelectorAll(".page-view")
@@ -5896,6 +5896,7 @@ function enterCategoryHeader(name) {
   if (actions) header.insertBefore(bar, actions);
   else header.appendChild(bar);
 }
+
 function exitCategoryHeader() {
   const header = document.getElementById("header");
   if (!header) return;
