@@ -5872,6 +5872,7 @@ function normalizeString(str) {
 }
 
 function enterCategoryHeader(name, onBack) {
+  if (window.innerWidth > 768) return;
   const header = document.getElementById("header");
   if (!header) return;
 
