@@ -1311,6 +1311,7 @@ header {
   display: flex;
   align-items: center;
   gap: 0.8rem;
+  justify-content: flex-end;
 }
 
 .search-container {
@@ -1623,7 +1624,7 @@ header {
   padding: 0.4rem 0 0;
   text-align: left;
   background: transparent;
-  height: 2.4rem;
+  height: 1.4rem;
   overflow: hidden;
 }
 
@@ -1632,12 +1633,12 @@ header {
   font-weight: 500;
   color: var(--text-color);
   margin: 0;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.2;
+  width: 100%;
+  display: block;
 }
 
 .card-overlay {
@@ -1833,7 +1834,6 @@ header {
   align-items: center;
   gap: 0.5rem;
   transition: transform var(--transition-speed);
-  opacity: 0.7;
   flex: 1;
   /* Hace que cada elemento ocupe una parte igual del espacio disponible */
   min-width: 0;
@@ -1849,8 +1849,7 @@ header {
   /* Limita el tamaño máximo */
   min-width: 30px;
   /* Establece un tamaño mínimo */
-  filter: grayscale(100%);
-  transition: filter var(--transition-speed);
+  transition: filter var(--transition-speed), opacity var(--transition-speed);
 }
 
 .service-name {
@@ -1860,12 +1859,14 @@ header {
   display: none;
 }
 
-.service-item.active .service-logo {
+..service-item.active .service-logo {
   filter: none;
-  /* Elimina el efecto de escala de grises */
   transform: scale(1.1);
-  /* Le da un pequeño efecto de crecimiento */
   transition: filter 0.3s, transform 0.3s;
+}
+
+.service-item.active {
+  opacity: 0;
 }
 
 /* Estilos para el nuevo menú de navegación inferior */
@@ -2104,7 +2105,7 @@ header {
 }
 
 .page-header {
-  display: flex;
+  display: none;
   justify-content: space-between;
   align-items: center;
   margin-top: 4rem;
@@ -3925,7 +3926,7 @@ img.lazy.loaded {
 }
 
 @media (max-width: 768px) {
-    
+
     footer {
   display: none;
         }
@@ -3997,7 +3998,7 @@ img.lazy.loaded {
   .hero-logo {
     display: block;
     margin: 0 auto 20px;
-    width: 30%;
+    width: 50%;
     height: auto;
     margin-bottom: 20px;
     filter: drop-shadow(2px 2px 4px rgba(0, 0, 0, 0.5));
@@ -4025,7 +4026,7 @@ img.lazy.loaded {
 
   .main-container {
     padding: 0 2%;
-    margin-top: 50px;
+    margin-top: 60px;
     /* Ajusta este valor según la altura de tu header fijo */
   }
 
@@ -4726,6 +4727,7 @@ footer p {
 }
 
 .related-card-rating {
+  display: none;
   position: absolute;
   top: 0.35rem;
   left: 0.35rem;
@@ -4743,6 +4745,7 @@ footer p {
 }
 
 .related-card-type {
+  display: none;
   position: absolute;
   bottom: 0.35rem;
   left: 0.35rem;
@@ -4755,6 +4758,7 @@ footer p {
 }
 
 .related-card-year {
+  display: none;
   position: absolute;
   bottom: 0.35rem;
   right: 0.35rem;
@@ -4908,7 +4912,7 @@ footer p {
   .mobile-info-header {
     display: block;
   }
-  
+
   .desktop-poster-info-section,
   .desktop-seasons-panel {
     display: none !important;
@@ -4930,11 +4934,11 @@ footer p {
     gap: 1.5rem;
     padding: 1.5rem;
   }
-  
+
   .text-logo{
     display: none;
   }
-  
+
   .splash-overlay {
     display: none !important;
   }
@@ -5433,4 +5437,63 @@ footer p {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100px;
+}
+/* ── Category/Platform page-header: hide on mobile only ── */
+@media (max-width: 768px) {
+  .cat-page-header {
+    display: none !important;
+  }
+}
+
+/* ── Custom Floating Buttons ── */
+#custom-floating-buttons {
+  position: fixed;
+  bottom: 5rem;
+  left: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  z-index: 998;
+}
+
+.custom-fab {
+  position: relative;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: #1a1a2e;
+  border: 2px solid var(--secondary-color, #ff6b00);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+
+.custom-fab:hover {
+  transform: scale(1.1);
+  background: var(--secondary-color, #ff6b00);
+}
+
+.custom-fab-tooltip {
+  position: absolute;
+  left: 58px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(0,0,0,0.85);
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.custom-fab:hover .custom-fab-tooltip {
+  opacity: 1;
 }
