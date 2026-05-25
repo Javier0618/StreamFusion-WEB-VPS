@@ -8250,13 +8250,6 @@ document.addEventListener("click", function (e) {
       { icon: "fa-link", label: "", url: "", enabled: true },
     ]);
   }
-  if (e.target.closest("#add-mobile-floating-btn")) {
-    const current = getMobileFloatingButtonsFromForm();
-    renderMobileFloatingButtonsAdminList([
-      ...current,
-      { icon: "fa-link", label: "", url: "", enabled: true },
-    ]);
-  }
 });
 
 function renderFloatingButtonsAdminList(buttons) {
@@ -8299,45 +8292,6 @@ function getFloatingButtonsFromForm() {
   }));
 }
 
-function getMobileFloatingButtonsFromForm() {
-  const rows = document.querySelectorAll(".fab-mobile-admin-row");
-  return Array.from(rows).map((row) => ({
-    icon: row.querySelector(".fab-icon").value.trim(),
-    label: row.querySelector(".fab-label").value.trim(),
-    url: row.querySelector(".fab-url").value.trim(),
-    enabled: row.querySelector(".fab-enabled").checked,
-  }));
-}
-
-function renderMobileFloatingButtonsAdminList(buttons) {
-  const list = document.getElementById("mobile-floating-buttons-list");
-  if (!list) return;
-  if (!buttons.length) {
-    list.innerHTML = "";
-    return;
-  }
-  list.innerHTML = buttons
-    .map(
-      (btn, i) => `
-    <div class="fab-mobile-admin-row" data-index="${i}" style="display:flex;align-items:center;gap:8px;background:#1e1e1e;padding:10px;border-radius:8px;border:1px solid #2a4a6b;">
-      <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0;">
-        <i class="fas ${btn.icon || "fa-link"}" style="font-size:1.4rem;color:#4a9eff;width:32px;text-align:center;"></i>
-        <input class="fab-icon form-input" placeholder="fa-download" value="${btn.icon || ""}" title="Clase del ícono Font Awesome" style="width:100px;font-size:0.75rem;padding:4px 6px;background:#2a2a2a;border:1px solid #444;text-align:center;" oninput="this.previousElementSibling.className='fas '+this.value">
-      </div>
-      <input class="fab-label form-input" placeholder="Etiqueta (ej: Descargar App)" value="${btn.label || ""}" style="flex:1;background:#2a2a2a;border:1px solid #444;">
-      <input class="fab-url form-input" placeholder="https://..." value="${btn.url || ""}" style="flex:2;background:#2a2a2a;border:1px solid #444;">
-      <label style="display:flex;align-items:center;gap:5px;white-space:nowrap;cursor:pointer;font-size:0.85rem;">
-        <input type="checkbox" class="fab-enabled" ${btn.enabled !== false ? "checked" : ""} style="width:18px;height:18px;accent-color:#4a9eff;">
-        Activo
-      </label>
-      <button type="button" onclick="this.closest('.fab-mobile-admin-row').remove()" title="Eliminar" style="background:#c0392b;border:none;color:#fff;width:32px;height:32px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-        <i class="fas fa-trash"></i>
-      </button>
-    </div>
-  `,
-    )
-    .join("");
-}
 
 function applyFloatingButtonSettings() {
   const container = document.getElementById("custom-floating-buttons");
@@ -8420,11 +8374,29 @@ function populateSettingsForm() {
   if (showDonationCheckbox)
     showDonationCheckbox.checked = webSettings.showDonationButton !== false;
 
-  // Floating buttons admin list (web) — saved to /web_config/settings
-  renderFloatingButtonsAdminList(webSettings.floatingButtons || []);
-
-  // Floating buttons admin list (mobile) — saved to /web_config/mobile_settings (documento separado)
-  renderMobileFloatingButtonsAdminList(mobileSettings.floatingButtons || []);
+  // Floating buttons — usa la lista correcta según plataforma
+  // Mobile (Capacitor): carga de /web_config/mobile_settings, no toca /web_config/settings
+  // Web: carga de /web_config/settings
+  const fabTitle = document.querySelector('h3[data-fab-title]') ||
+    (() => {
+      const el = document.getElementById("floating-buttons-list")?.previousElementSibling;
+      return el;
+    })();
+  if (isCapacitorApp) {
+    const fabSection = document.getElementById("floating-buttons-list")?.closest("div")?.previousElementSibling;
+    const hint = document.getElementById("fab-platform-hint");
+    if (!hint) {
+      const hintEl = document.createElement("p");
+      hintEl.id = "fab-platform-hint";
+      hintEl.style.cssText = "color:#4a9eff;font-size:0.82rem;margin-bottom:0.5rem;background:#1a2a3a;padding:6px 10px;border-radius:6px;border-left:3px solid #4a9eff;";
+      hintEl.innerHTML = '<i class="fas fa-mobile-alt"></i> Configurando botones de la <strong>App Móvil</strong> — guardado en <code>/web_config/mobile_settings</code>, no afecta el sitio web.';
+      const list = document.getElementById("floating-buttons-list");
+      if (list) list.parentNode.insertBefore(hintEl, list);
+    }
+    renderFloatingButtonsAdminList(mobileSettings.floatingButtons || []);
+  } else {
+    renderFloatingButtonsAdminList(webSettings.floatingButtons || []);
+  }
 
   // Visible Platforms
   const platforms = [
@@ -8479,21 +8451,21 @@ async function saveWebSettings(e) {
       showDonationButton: showDonationCheckbox
         ? showDonationCheckbox.checked
         : true,
-      floatingButtons: getFloatingButtonsFromForm(),
-    };
-
-    const newMobileSettings = {
-      floatingButtons: getMobileFloatingButtonsFromForm(),
+      floatingButtons: isCapacitorApp ? (webSettings.floatingButtons || []) : getFloatingButtonsFromForm(),
     };
 
     const settingsRef = doc(db, "web_config", "settings");
     const mobileRef = doc(db, "web_config", "mobile_settings");
 
-    await setDoc(settingsRef, newSettings);
-    await setDoc(mobileRef, newMobileSettings);
-
-    webSettings = newSettings;
-    mobileSettings = newMobileSettings;
+    if (isCapacitorApp) {
+      const newMobileSettings = { floatingButtons: getFloatingButtonsFromForm() };
+      await setDoc(mobileRef, newMobileSettings);
+      mobileSettings = newMobileSettings;
+      webSettings = { ...webSettings, ...newSettings };
+    } else {
+      await setDoc(settingsRef, newSettings);
+      webSettings = newSettings;
+    }
 
     // Apply changes dynamically without reloading
     await loadAllContent();
