@@ -1109,6 +1109,16 @@ let webSettings = {
   showDonationButton: true,
   floatingButtons: [],
 };
+
+let mobileSettings = {
+  floatingButtons: [],
+};
+
+const isCapacitorApp =
+  typeof window !== "undefined" &&
+  (window.Capacitor !== undefined ||
+    window.location.protocol === "capacitor:" ||
+    window.location.protocol === "ionic:");
 let currentCategory = "inicio";
 let currentService = null;
 let currentGenre = null;
@@ -1226,7 +1236,7 @@ async function initApp() {
 
   const webLoadingPromise = (async () => {
     try {
-      await loadWebSettings();
+      await Promise.all([loadWebSettings(), loadMobileSettings()]);
       applyStaticTranslations();
       applyFloatingButtonSettings();
       initEventListeners();
@@ -5331,23 +5341,31 @@ async function renderBackdropSlider(sliderElement, content) {
     // SVG 16:9 transparente (inline, sin petición de red) para cuando no hay backdrop
     const spacerSvg = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 9'%3E%3C/svg%3E`;
 
-    const wrapS  = "position:relative;width:100%;overflow:hidden;background:#1a1a1a;border-radius:8px;display:block;";
-    const imgS   = "width:100%;height:auto;display:block;";
-    const realS  = "position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:block;";
-    const holdS  = "position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#1f1f1f;color:#555;font-size:2rem;";
-    const badgeS = "position:absolute;top:6px;left:6px;background:#e87722;color:#fff;font-size:11px;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase;z-index:3;line-height:1.4;";
-    const rateS  = "position:absolute;bottom:6px;right:6px;background:rgba(0,0,0,0.75);color:#fff;font-size:11px;font-weight:600;padding:2px 6px;border-radius:4px;z-index:3;line-height:1.4;";
-    const gradS  = "position:absolute;top:0;left:0;width:100%;height:100%;background:linear-gradient(to top,rgba(0,0,0,0.6) 0%,transparent 55%);pointer-events:none;z-index:2;";
-    const titlS  = "padding:5px 2px 0;overflow:hidden;width:100%;display:block;";
-    const h3S    = "font-size:12px;font-weight:500;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff;width:100%;display:block;";
+    const wrapS =
+      "position:relative;width:100%;overflow:hidden;background:#1a1a1a;border-radius:8px;display:block;";
+    const imgS = "width:100%;height:auto;display:block;";
+    const realS =
+      "position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:block;";
+    const holdS =
+      "position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#1f1f1f;color:#555;font-size:2rem;";
+    const badgeS =
+      "position:absolute;top:6px;left:6px;background:#e87722;color:#fff;font-size:11px;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase;z-index:3;line-height:1.4;";
+    const rateS =
+      "position:absolute;bottom:6px;right:6px;background:rgba(0,0,0,0.75);color:#fff;font-size:11px;font-weight:600;padding:2px 6px;border-radius:4px;z-index:3;line-height:1.4;";
+    const gradS =
+      "position:absolute;top:0;left:0;width:100%;height:100%;background:linear-gradient(to top,rgba(0,0,0,0.6) 0%,transparent 55%);pointer-events:none;z-index:2;";
+    const titlS = "padding:5px 2px 0;overflow:hidden;width:100%;display:block;";
+    const h3S =
+      "font-size:12px;font-weight:500;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff;width:100%;display:block;";
 
     card.innerHTML = `
       <div class="backdrop-card-image" style="${wrapS}">
-        ${backdropUrl
-          ? `<!-- spacer mantiene ratio 16:9 ANTES de que cargue la imagen real -->
+        ${
+          backdropUrl
+            ? `<!-- spacer mantiene ratio 16:9 ANTES de que cargue la imagen real -->
              <img src="${spacerSvg}" alt="" aria-hidden="true" style="${imgS}">
              <img src="${backdropUrl}" alt="${title}" class="backdrop-img" style="${realS}">`
-          : `<!-- Sin backdrop: spacer SVG + ícono centrado -->
+            : `<!-- Sin backdrop: spacer SVG + ícono centrado -->
              <img src="${spacerSvg}" alt="" aria-hidden="true" style="${imgS}">
              <div style="${holdS}"><i class="fas fa-film"></i></div>`
         }
@@ -5946,30 +5964,35 @@ function enterCategoryHeader(name, onBack) {
   if (!header) return;
 
   const logo = header.querySelector(".sfusion-logo");
-  const nav  = header.querySelector(".nav-links");
+  const nav = header.querySelector(".nav-links");
   if (logo) logo.style.display = "none";
-  if (nav)  nav.style.display  = "none";
+  if (nav) nav.style.display = "none";
 
   // Remove any previous injected elements
-  const oldBack  = header.querySelector("#cat-back-btn");
+  const oldBack = header.querySelector("#cat-back-btn");
   const oldTitle = header.querySelector("#cat-title");
-  if (oldBack)  oldBack.remove();
+  if (oldBack) oldBack.remove();
   if (oldTitle) oldTitle.remove();
 
   // Switch header to a 3-column grid: 25% | 50% | 25%
-  header.style.display             = "grid";
+  header.style.display = "grid";
   header.style.gridTemplateColumns = "1fr 2fr 1fr";
-  header.style.alignItems          = "center";
+  header.style.alignItems = "center";
 
   const backBtn = document.createElement("button");
   backBtn.id = "cat-back-btn";
-  backBtn.style.cssText = "background:none;border:none;color:#fff;font-size:1.2rem;padding:0.4rem 0.8rem;cursor:pointer;display:flex;align-items:center;justify-content:flex-start;";
+  backBtn.style.cssText =
+    "background:none;border:none;color:#fff;font-size:1.2rem;padding:0.4rem 0.8rem;cursor:pointer;display:flex;align-items:center;justify-content:flex-start;";
   backBtn.innerHTML = '<i class="fas fa-arrow-left"></i>';
-  backBtn.addEventListener("click", onBack || (() => navigateToView(window.previousView || "home")));
+  backBtn.addEventListener(
+    "click",
+    onBack || (() => navigateToView(window.previousView || "home")),
+  );
 
   const titleEl = document.createElement("span");
   titleEl.id = "cat-title";
-  titleEl.style.cssText = "text-align:center;font-size:1rem;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+  titleEl.style.cssText =
+    "text-align:center;font-size:1rem;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
   titleEl.textContent = name;
 
   // Insert back-btn and title before header-actions (3rd column)
@@ -5987,20 +6010,20 @@ function exitCategoryHeader() {
   const header = document.getElementById("header");
   if (!header) return;
 
-  const backBtn  = header.querySelector("#cat-back-btn");
-  const titleEl  = header.querySelector("#cat-title");
-  const logo     = header.querySelector(".sfusion-logo");
-  const nav      = header.querySelector(".nav-links");
+  const backBtn = header.querySelector("#cat-back-btn");
+  const titleEl = header.querySelector("#cat-title");
+  const logo = header.querySelector(".sfusion-logo");
+  const nav = header.querySelector(".nav-links");
 
-  if (backBtn)  backBtn.remove();
-  if (titleEl)  titleEl.remove();
-  if (logo)     logo.style.display = "";
-  if (nav)      nav.style.display  = "";
+  if (backBtn) backBtn.remove();
+  if (titleEl) titleEl.remove();
+  if (logo) logo.style.display = "";
+  if (nav) nav.style.display = "";
 
   // Restore header to its original flex layout
-  header.style.display             = "";
+  header.style.display = "";
   header.style.gridTemplateColumns = "";
-  header.style.alignItems          = "";
+  header.style.alignItems = "";
 }
 
 async function handleCategoryClick(e) {
@@ -6039,10 +6062,10 @@ async function handleCategoryClick(e) {
 }
 
 const SERVICE_DISPLAY_NAMES = {
-  netflix:   "Netflix",
-  disney:    "Disney+",
-  hbo:       "HBO Max",
-  prime:     "Prime Video",
+  netflix: "Netflix",
+  disney: "Disney+",
+  hbo: "HBO Max",
+  prime: "Prime Video",
   paramount: "Paramount+",
 };
 
@@ -8205,26 +8228,47 @@ async function loadWebSettings() {
   }
 }
 
+async function loadMobileSettings() {
+  try {
+    const mobileRef = doc(db, "web_config", "mobile_settings");
+    const mobileDoc = await getDoc(mobileRef);
+    if (mobileDoc.exists()) {
+      mobileSettings = { ...mobileSettings, ...mobileDoc.data() };
+      console.log("Mobile settings loaded from Firestore.");
+    }
+  } catch (error) {
+    console.error("Error loading mobile settings, using defaults:", error);
+  }
+}
+
 // Event delegation for the "Agregar Botón" button (works even if button is re-rendered)
 document.addEventListener("click", function (e) {
   if (e.target.closest("#add-floating-btn")) {
     const current = getFloatingButtonsFromForm();
-    renderFloatingButtonsAdminList([...current, { icon: "fa-link", label: "", url: "", enabled: true }]);
+    renderFloatingButtonsAdminList([
+      ...current,
+      { icon: "fa-link", label: "", url: "", enabled: true },
+    ]);
   }
 });
 
 function renderFloatingButtonsAdminList(buttons) {
   const list = document.getElementById("floating-buttons-list");
   if (!list) return;
-  if (!buttons.length) { list.innerHTML = ""; return; }
-  list.innerHTML = buttons.map((btn, i) => `
+  if (!buttons.length) {
+    list.innerHTML = "";
+    return;
+  }
+  list.innerHTML = buttons
+    .map(
+      (btn, i) => `
     <div class="fab-admin-row" data-index="${i}" style="display:flex;align-items:center;gap:8px;background:#1e1e1e;padding:10px;border-radius:8px;border:1px solid #333;">
       <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0;">
-        <i class="fas ${btn.icon || 'fa-link'}" style="font-size:1.4rem;color:var(--secondary-color,#ff6b00);width:32px;text-align:center;"></i>
-        <input class="fab-icon form-input" placeholder="fa-download" value="${btn.icon || ''}" title="Clase del ícono Font Awesome (ej: fa-download)" style="width:100px;font-size:0.75rem;padding:4px 6px;background:#2a2a2a;border:1px solid #444;text-align:center;" oninput="this.previousElementSibling.className='fas '+this.value">
+        <i class="fas ${btn.icon || "fa-link"}" style="font-size:1.4rem;color:var(--secondary-color,#ff6b00);width:32px;text-align:center;"></i>
+        <input class="fab-icon form-input" placeholder="fa-download" value="${btn.icon || ""}" title="Clase del ícono Font Awesome (ej: fa-download)" style="width:100px;font-size:0.75rem;padding:4px 6px;background:#2a2a2a;border:1px solid #444;text-align:center;" oninput="this.previousElementSibling.className='fas '+this.value">
       </div>
-      <input class="fab-label form-input" placeholder="Etiqueta (ej: Descargar App)" value="${btn.label || ''}" style="flex:1;background:#2a2a2a;border:1px solid #444;">
-      <input class="fab-url form-input" placeholder="https://..." value="${btn.url || ''}" style="flex:2;background:#2a2a2a;border:1px solid #444;">
+      <input class="fab-label form-input" placeholder="Etiqueta (ej: Descargar App)" value="${btn.label || ""}" style="flex:1;background:#2a2a2a;border:1px solid #444;">
+      <input class="fab-url form-input" placeholder="https://..." value="${btn.url || ""}" style="flex:2;background:#2a2a2a;border:1px solid #444;">
       <label style="display:flex;align-items:center;gap:5px;white-space:nowrap;cursor:pointer;font-size:0.85rem;">
         <input type="checkbox" class="fab-enabled" ${btn.enabled !== false ? "checked" : ""} style="width:18px;height:18px;accent-color:var(--secondary-color);">
         Activo
@@ -8233,38 +8277,49 @@ function renderFloatingButtonsAdminList(buttons) {
         <i class="fas fa-trash" style="font-size:0.8rem;"></i>
       </button>
     </div>
-  `).join("");
+  `,
+    )
+    .join("");
 }
 
 function getFloatingButtonsFromForm() {
   const rows = document.querySelectorAll(".fab-admin-row");
-  return Array.from(rows).map(row => ({
-    icon:    row.querySelector(".fab-icon").value.trim(),
-    label:   row.querySelector(".fab-label").value.trim(),
-    url:     row.querySelector(".fab-url").value.trim(),
+  return Array.from(rows).map((row) => ({
+    icon: row.querySelector(".fab-icon").value.trim(),
+    label: row.querySelector(".fab-label").value.trim(),
+    url: row.querySelector(".fab-url").value.trim(),
     enabled: row.querySelector(".fab-enabled").checked,
   }));
 }
+
 
 function applyFloatingButtonSettings() {
   const container = document.getElementById("custom-floating-buttons");
   if (!container) return;
 
-  const customButtons = (webSettings.floatingButtons || [])
-    .filter(b => b.enabled !== false && b.url)
-    .map(btn => `
-      <div class="custom-fab" onclick="window.open('${btn.url.replace(/'/g,"&#39;")}','_blank')" title="${(btn.label || btn.url).replace(/"/g,'&quot;')}">
-        <i class="fas ${btn.icon || 'fa-link'}"></i>
+  const buttonList = isCapacitorApp
+    ? (mobileSettings.floatingButtons || [])
+    : (webSettings.floatingButtons || []);
+
+  const customButtons = buttonList
+    .filter((b) => b.enabled !== false && b.url)
+    .map(
+      (btn) => `
+      <div class="custom-fab" onclick="window.open('${btn.url.replace(/'/g, "&#39;")}','_blank')" title="${(btn.label || btn.url).replace(/"/g, "&quot;")}">
+        <i class="fas ${btn.icon || "fa-link"}"></i>
         ${btn.label ? `<span class="custom-fab-tooltip">${btn.label}</span>` : ""}
       </div>
-    `).join("");
+    `,
+    )
+    .join("");
 
-  const paypalBtn = webSettings.showDonationButton !== false
-    ? `<div class="custom-fab" id="floating-donation-btn" style="background:var(--secondary-color,#ff6b00);border-color:var(--secondary-color,#ff6b00);" title="Donar con PayPal">
+  const paypalBtn =
+    webSettings.showDonationButton !== false
+      ? `<div class="custom-fab" id="floating-donation-btn" style="background:var(--secondary-color,#ff6b00);border-color:var(--secondary-color,#ff6b00);" title="Donar con PayPal">
         <i class="fa-brands fa-paypal"></i>
         <span class="custom-fab-tooltip">Donar con PayPal</span>
        </div>`
-    : "";
+      : "";
 
   container.innerHTML = customButtons + paypalBtn;
 
@@ -8272,7 +8327,9 @@ function applyFloatingButtonSettings() {
   const paypalEl = document.getElementById("floating-donation-btn");
   const donationModal = document.getElementById("donation-modal");
   if (paypalEl && donationModal) {
-    paypalEl.onclick = () => { donationModal.style.display = "block"; };
+    paypalEl.onclick = () => {
+      donationModal.style.display = "block";
+    };
   }
 }
 
@@ -8314,10 +8371,32 @@ function populateSettingsForm() {
 
   // Donation button toggle
   const showDonationCheckbox = document.getElementById("show-donation-btn");
-  if (showDonationCheckbox) showDonationCheckbox.checked = webSettings.showDonationButton !== false;
+  if (showDonationCheckbox)
+    showDonationCheckbox.checked = webSettings.showDonationButton !== false;
 
-  // Floating buttons admin list
-  renderFloatingButtonsAdminList(webSettings.floatingButtons || []);
+  // Floating buttons — usa la lista correcta según plataforma
+  // Mobile (Capacitor): carga de /web_config/mobile_settings, no toca /web_config/settings
+  // Web: carga de /web_config/settings
+  const fabTitle = document.querySelector('h3[data-fab-title]') ||
+    (() => {
+      const el = document.getElementById("floating-buttons-list")?.previousElementSibling;
+      return el;
+    })();
+  if (isCapacitorApp) {
+    const fabSection = document.getElementById("floating-buttons-list")?.closest("div")?.previousElementSibling;
+    const hint = document.getElementById("fab-platform-hint");
+    if (!hint) {
+      const hintEl = document.createElement("p");
+      hintEl.id = "fab-platform-hint";
+      hintEl.style.cssText = "color:#4a9eff;font-size:0.82rem;margin-bottom:0.5rem;background:#1a2a3a;padding:6px 10px;border-radius:6px;border-left:3px solid #4a9eff;";
+      hintEl.innerHTML = '<i class="fas fa-mobile-alt"></i> Configurando botones de la <strong>App Móvil</strong> — guardado en <code>/web_config/mobile_settings</code>, no afecta el sitio web.';
+      const list = document.getElementById("floating-buttons-list");
+      if (list) list.parentNode.insertBefore(hintEl, list);
+    }
+    renderFloatingButtonsAdminList(mobileSettings.floatingButtons || []);
+  } else {
+    renderFloatingButtonsAdminList(webSettings.floatingButtons || []);
+  }
 
   // Visible Platforms
   const platforms = [
@@ -8369,14 +8448,24 @@ async function saveWebSettings(e) {
         peliculasPopulares: parseInt(postersPeliculasPopularesInput.value),
         seriesPopulares: parseInt(postersSeriesPopularesInput.value),
       },
-      showDonationButton: showDonationCheckbox ? showDonationCheckbox.checked : true,
-      floatingButtons: getFloatingButtonsFromForm(),
+      showDonationButton: showDonationCheckbox
+        ? showDonationCheckbox.checked
+        : true,
+      floatingButtons: isCapacitorApp ? (webSettings.floatingButtons || []) : getFloatingButtonsFromForm(),
     };
 
     const settingsRef = doc(db, "web_config", "settings");
-    await setDoc(settingsRef, newSettings);
+    const mobileRef = doc(db, "web_config", "mobile_settings");
 
-    webSettings = newSettings; // Update global object
+    if (isCapacitorApp) {
+      const newMobileSettings = { floatingButtons: getFloatingButtonsFromForm() };
+      await setDoc(mobileRef, newMobileSettings);
+      mobileSettings = newMobileSettings;
+      webSettings = { ...webSettings, ...newSettings };
+    } else {
+      await setDoc(settingsRef, newSettings);
+      webSettings = newSettings;
+    }
 
     // Apply changes dynamically without reloading
     await loadAllContent();
@@ -9025,16 +9114,28 @@ document.addEventListener("DOMContentLoaded", () => {
     var cancelDonation = document.getElementById("cancel-donation");
     var paypalDonateBtn = document.getElementById("paypal-donate-btn");
 
-    if (!donationModal || !closeDonationModal || !cancelDonation || !paypalDonateBtn) {
+    if (
+      !donationModal ||
+      !closeDonationModal ||
+      !cancelDonation ||
+      !paypalDonateBtn
+    ) {
       return;
     }
 
     var modalOverlay = donationModal.querySelector(".modal-overlay");
 
-    function openModal() { donationModal.style.display = "block"; }
-    function closeModal() { donationModal.style.display = "none"; }
+    function openModal() {
+      donationModal.style.display = "block";
+    }
+    function closeModal() {
+      donationModal.style.display = "none";
+    }
     function openPayPal() {
-      window.open("https://www.paypal.com/donate/?hosted_button_id=8TVX4VWNBWVM4", "_blank");
+      window.open(
+        "https://www.paypal.com/donate/?hosted_button_id=8TVX4VWNBWVM4",
+        "_blank",
+      );
     }
 
     // The floating PayPal button is dynamic — use document-level delegation
