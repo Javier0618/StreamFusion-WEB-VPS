@@ -8262,20 +8262,24 @@ function renderFloatingButtonsAdminList(buttons) {
   list.innerHTML = buttons
     .map(
       (btn, i) => `
-    <div class="fab-admin-row" data-index="${i}" style="display:flex;align-items:center;gap:8px;background:#1e1e1e;padding:10px;border-radius:8px;border:1px solid #333;">
+    <div class="fab-admin-row" data-index="${i}" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:#1e1e1e;padding:12px;border-radius:8px;border:1px solid #333;">
       <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0;">
         <i class="fas ${btn.icon || "fa-link"}" style="font-size:1.4rem;color:var(--secondary-color,#ff6b00);width:32px;text-align:center;"></i>
-        <input class="fab-icon form-input" placeholder="fa-download" value="${btn.icon || ""}" title="Clase del ícono Font Awesome (ej: fa-download)" style="width:100px;font-size:0.75rem;padding:4px 6px;background:#2a2a2a;border:1px solid #444;text-align:center;" oninput="this.previousElementSibling.className='fas '+this.value">
+        <input class="fab-icon form-input" placeholder="fa-link" value="${btn.icon || ""}" title="Ícono Font Awesome (ej: fa-download)" style="width:90px;font-size:0.72rem;padding:4px 6px;background:#2a2a2a;border:1px solid #555;border-radius:4px;color:#fff;text-align:center;" oninput="this.previousElementSibling.className='fas '+this.value">
       </div>
-      <input class="fab-label form-input" placeholder="Etiqueta (ej: Descargar App)" value="${btn.label || ""}" style="flex:1;background:#2a2a2a;border:1px solid #444;">
-      <input class="fab-url form-input" placeholder="https://..." value="${btn.url || ""}" style="flex:2;background:#2a2a2a;border:1px solid #444;">
-      <label style="display:flex;align-items:center;gap:5px;white-space:nowrap;cursor:pointer;font-size:0.85rem;">
-        <input type="checkbox" class="fab-enabled" ${btn.enabled !== false ? "checked" : ""} style="width:18px;height:18px;accent-color:var(--secondary-color);">
-        Activo
-      </label>
-      <button type="button" onclick="this.closest('.fab-admin-row').remove()" title="Eliminar" style="background:#c0392b;border:none;color:#fff;width:32px;height:32px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-        <i class="fas fa-trash" style="font-size:0.8rem;"></i>
-      </button>
+      <div style="display:flex;flex-direction:column;gap:6px;flex:1;min-width:160px;">
+        <input class="fab-label form-input" placeholder="Etiqueta (ej: Descargar App)" value="${btn.label || ""}" style="width:100%;padding:7px 10px;background:#2a2a2a;border:1px solid #555;border-radius:4px;color:#fff;font-size:0.88rem;box-sizing:border-box;">
+        <input class="fab-url form-input" placeholder="https://..." value="${btn.url || ""}" style="width:100%;padding:7px 10px;background:#2a2a2a;border:1px solid #555;border-radius:4px;color:#fff;font-size:0.88rem;box-sizing:border-box;">
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.85rem;color:#ccc;">
+          <input type="checkbox" class="fab-enabled" ${btn.enabled !== false ? "checked" : ""} style="width:18px;height:18px;accent-color:var(--secondary-color);">
+          Activo
+        </label>
+        <button type="button" onclick="this.closest('.fab-admin-row').remove()" title="Eliminar" style="background:#c0392b;border:none;color:#fff;width:34px;height:34px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <i class="fas fa-trash" style="font-size:0.8rem;"></i>
+        </button>
+      </div>
     </div>
   `,
     )
@@ -8305,7 +8309,7 @@ function applyFloatingButtonSettings() {
     .filter((b) => b.enabled !== false && b.url)
     .map(
       (btn) => `
-      <div class="custom-fab" onclick="window.open('${btn.url.replace(/'/g, "&#39;")}','_blank')" title="${(btn.label || btn.url).replace(/"/g, "&quot;")}">
+      <div class="custom-fab" onclick="(function(url){if(window.Capacitor){window.open(url,'_system');}else{window.open(url,'_blank');}})('${btn.url.replace(/'/g, "&#39;")}')" title="${(btn.label || btn.url).replace(/"/g, "&quot;")}">
         <i class="fas ${btn.icon || "fa-link"}"></i>
         ${btn.label ? `<span class="custom-fab-tooltip">${btn.label}</span>` : ""}
       </div>
