@@ -941,6 +941,7 @@ const adminNoMessages = document.getElementById("admin-no-messages");
 const settingsTab = document.querySelector('.profile-tab[data-tab="settings"]');
 const settingsSection = document.getElementById("settings-section");
 const settingsForm = document.getElementById("settings-form");
+const settingsCard = document.querySelector('.quick-action-card[data-tab="settings"]');
 const importLanguageSelect = document.getElementById("import-language");
 const displayLanguageSelect = document.getElementById("display-language");
 const heroSliderPostersInput = document.getElementById("hero-slider-posters");
@@ -1547,10 +1548,12 @@ function updateUIForLoggedInUser() {
       if (settingsTab) {
         settingsTab.style.display = "block";
       }
+      if (settingsCard) settingsCard.style.display = "";
     } else {
       if (settingsTab) {
         settingsTab.style.display = "none";
       }
+      if (settingsCard) settingsCard.style.display = "none";
     }
 
     // Logout link
