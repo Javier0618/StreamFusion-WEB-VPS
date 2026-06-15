@@ -2453,6 +2453,9 @@ async function handleLogout() {
     currentUser = null;
     isAdmin = false;
 
+    updateUIForLoggedInUser();
+    profileDropdown.classList.remove("active");
+
     // Update UI for unauthenticated user
     updateUIForLoggedInUser();
 
