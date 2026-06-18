@@ -10018,8 +10018,9 @@ function injectTvHTML() {
         <p>Selecciona un canal</p>
       </div>
       <iframe id="tv-player-iframe" src="" frameborder="0"
-        allowfullscreen allow="autoplay; encrypted-media"
-        style="display:none; width:100%; height:100%; border:none;"></iframe>
+  allowfullscreen allow="autoplay; encrypted-media"
+  sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-fullscreen"
+  style="display:none; width:100%; height:100%; border:none;"></iframe>
     </div>
     <div class="tv-controls-bar">
       <button class="tv-ctrl-btn" id="tv-mute-btn" title="Silenciar">
@@ -10592,6 +10593,70 @@ async function checkTvEnabled() {
 function initTvModule() {
   injectTvHTML();
   checkTvEnabled();
+  tvBlockAds();
+}
+
+
+function tvBlockAds() {
+  // 1. Bloquear window.open (popups/tabs nuevas)
+  const _originalOpen = window.open;
+  window.open = function (url, target, features) {
+    // Solo bloquear cuando la vista TV está activa
+    const tvView = document.getElementById("tv-view");
+    const tvAdminView = document.getElementById("tv-admin-panel");
+    const tvActive =
+      tvView?.classList.contains("active") ||
+      tvAdminView?.classList.contains("active");
+    if (tvActive) {
+      console.log("[TV AdBlock] Popup bloqueado:", url);
+      return null;
+    }
+    return _originalOpen.call(window, url, target, features);
+  };
+
+  // 2. Bloquear redirecciones de la página principal desde el iframe
+  window.addEventListener(
+    "beforeunload",
+    function (e) {
+      const tvView = document.getElementById("tv-view");
+      if (tvView?.classList.contains("active")) {
+        e.preventDefault();
+        e.returnValue = "";
+        return "";
+      }
+    },
+    { capture: true }
+  );
+
+  // 3. Overlay anti-click sobre el iframe
+  // Evita que clicks accidentales en bordes/overlays del iframe activen ads
+  const wrapper = document.getElementById("tv-player-wrapper");
+  if (wrapper) {
+    const overlay = document.createElement("div");
+    overlay.id = "tv-ad-overlay";
+    overlay.style.cssText = `
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 60px;
+      z-index: 10;
+      pointer-events: none;
+    `;
+    wrapper.style.position = "relative";
+    wrapper.appendChild(overlay);
+  }
+
+  // 4. Detectar y cerrar inmediatamente cualquier ventana que se abra
+  let tvPopupWatcher = null;
+  document.addEventListener("visibilitychange", function () {
+    const tvView = document.getElementById("tv-view");
+    if (tvView?.classList.contains("active") && document.hidden) {
+      // Si la página se oculta mientras TV está activa = posible popup
+      if (tvPopupWatcher) clearTimeout(tvPopupWatcher);
+      tvPopupWatcher = setTimeout(() => {
+        window.focus(); // Recuperar el foco
+      }, 200);
+    }
+  });
 }
 
 if (document.readyState === "loading") {
