@@ -4275,6 +4275,21 @@ window.navigateToView = async function navigateToView(view) {
     // Restaurar header normal si veníamos de una categoría
     if (view !== "genre-results") exitCategoryHeader();
 
+
+    / Detener reproducción TV al salir de la sección
+    if (currentView === "tv" && view !== "tv") {
+      const tvIframe = document.getElementById("tv-player-iframe");
+      const tvPlaceholder = document.getElementById("tv-player-placeholder");
+      if (tvIframe) {
+        tvIframe.src = "";
+        tvIframe.style.display = "none";
+      }
+      if (tvPlaceholder) tvPlaceholder.style.display = "flex";
+      const tvLogoWrap = document.getElementById("tv-active-logo-wrap");
+      if (tvLogoWrap) tvLogoWrap.style.display = "none";
+      tvCurrentChannel = null;
+    }
+
     // LIMPIEZA TOTAL DE ESTADOS ACTIVOS (Para evitar duplicados entre clics y swipe)
     document
       .querySelectorAll(".page-view")
