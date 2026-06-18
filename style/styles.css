@@ -5506,6 +5506,7 @@ footer p {
 .tv-player-section {
   background: #0a0e1a;
   width: 100%;
+  padding-top: var(--header-height, 3.5rem);
 }
 
 .tv-active-logo-wrap {
