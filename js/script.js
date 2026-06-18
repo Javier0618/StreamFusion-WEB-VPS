@@ -4281,13 +4281,9 @@ window.navigateToView = async function navigateToView(view) {
 
     // Detener reproducción TV al salir de la sección
     if (currentView === "tv" && view !== "tv") {
-      const tvIframe = document.getElementById("tv-player-iframe");
-      const tvPlaceholder = document.getElementById("tv-player-placeholder");
-      if (tvIframe) {
-        tvIframe.src = "";
-        tvIframe.style.display = "none";
+      if (typeof window._tvStopPlayer === "function") {
+        window._tvStopPlayer();
       }
-      if (tvPlaceholder) tvPlaceholder.style.display = "flex";
       const tvLogoWrap = document.getElementById("tv-active-logo-wrap");
       if (tvLogoWrap) tvLogoWrap.style.display = "none";
       tvCurrentChannel = null;
@@ -10030,16 +10026,22 @@ function injectTvHTML() {
     <div class="tv-active-logo-wrap" id="tv-active-logo-wrap" style="display:none">
       <img id="tv-active-logo-img" src="" alt="Canal activo" />
     </div>
-    <div class="tv-player-wrapper" id="tv-player-wrapper">
-      <div class="tv-player-placeholder" id="tv-player-placeholder">
-        <i class="fas fa-tv"></i>
-        <p>Selecciona un canal</p>
-      </div>
-      <iframe id="tv-player-iframe" src="" frameborder="0"
-  allowfullscreen allow="autoplay; encrypted-media"
-  sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-fullscreen"
-  style="display:none; width:100%; height:100%; border:none;"></iframe>
-    </div>
+<div class="tv-player-wrapper" id="tv-player-wrapper">
+  <div class="tv-player-placeholder" id="tv-player-placeholder">
+    <i class="fas fa-tv"></i>
+    <p>Selecciona un canal</p>
+  </div>
+  <!-- Para streams HLS/DASH (m3u8, mpd) -->
+  <video id="tv-player-video"
+    controls autoplay playsinline
+    style="display:none; width:100%; height:100%; background:#000;">
+  </video>
+  <!-- Para embeds web (URLs de páginas con player) -->
+  <iframe id="tv-player-iframe" src="" frameborder="0"
+    allowfullscreen allow="autoplay; encrypted-media"
+    sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-fullscreen"
+    style="display:none; width:100%; height:100%; border:none;"></iframe>
+</div>
     <div class="tv-controls-bar">
       <button class="tv-ctrl-btn" id="tv-mute-btn" title="Silenciar">
         <i class="fas fa-volume-up"></i>
@@ -10350,17 +10352,111 @@ function selectTvChannel(channel) {
   }
 
   const iframe = document.getElementById("tv-player-iframe");
+  const video = document.getElementById("tv-player-video");
   const placeholder = document.getElementById("tv-player-placeholder");
-  if (iframe) {
-    iframe.src = channel.url;
-    iframe.style.display = "block";
-    if (placeholder) placeholder.style.display = "none";
+
+  // Ocultar todos los players
+  if (iframe) { iframe.style.display = "none"; iframe.src = ""; }
+  if (video) { video.style.display = "none"; video.src = ""; }
+  if (placeholder) placeholder.style.display = "none";
+
+  const url = channel.url || "";
+
+  if (url.includes(".m3u8") || url.includes("m3u8")) {
+    // ── HLS (m3u8) ──
+    if (video) {
+      video.style.display = "block";
+      if (typeof Hls !== "undefined" && Hls.isSupported()) {
+        // Destruir instancia previa si existe
+        if (window._tvHlsInstance) {
+          window._tvHlsInstance.destroy();
+        }
+        const hls = new Hls({
+          enableWorker: true,
+          lowLatencyMode: true,
+          backBufferLength: 90,
+        });
+        hls.loadSource(url);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+        window._tvHlsInstance = hls;
+      } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+        // Safari soporta HLS nativo
+        video.src = url;
+        video.play().catch(() => {});
+      } else {
+        if (placeholder) {
+          placeholder.innerHTML = '<i class="fas fa-exclamation-circle"></i><p>HLS no soportado en este navegador</p>';
+          placeholder.style.display = "flex";
+        }
+        video.style.display = "none";
+      }
+    }
+  } else if (url.includes(".mpd") || url.includes("mpd")) {
+    // ── DASH (mpd) ──
+    if (video) {
+      video.style.display = "block";
+      if (typeof dashjs !== "undefined") {
+        if (window._tvDashInstance) {
+          window._tvDashInstance.reset();
+        }
+        const dash = dashjs.MediaPlayer().create();
+        dash.initialize(video, url, true);
+        window._tvDashInstance = dash;
+      } else {
+        if (placeholder) {
+          placeholder.innerHTML = '<i class="fas fa-exclamation-circle"></i><p>DASH no soportado. Agrega dash.js</p>';
+          placeholder.style.display = "flex";
+        }
+        video.style.display = "none";
+      }
+    }
+  } else if (
+    url.includes(".mp4") ||
+    url.includes(".webm") ||
+    url.includes(".ogg")
+  ) {
+    // ── Video directo ──
+    if (video) {
+      video.src = url;
+      video.style.display = "block";
+      video.play().catch(() => {});
+    }
+  } else {
+    // ── Embed web (URL de página) → iframe ──
+    if (iframe) {
+      iframe.src = url;
+      iframe.style.display = "block";
+    }
   }
+
+  // Limpiar instancias al salir de TV (se llama desde navigateToView)
+  window._tvStopPlayer = function () {
+    if (window._tvHlsInstance) {
+      window._tvHlsInstance.destroy();
+      window._tvHlsInstance = null;
+    }
+    if (window._tvDashInstance) {
+      window._tvDashInstance.reset();
+      window._tvDashInstance = null;
+    }
+    if (video) { video.src = ""; video.style.display = "none"; }
+    if (iframe) { iframe.src = ""; iframe.style.display = "none"; }
+    if (placeholder) {
+      placeholder.innerHTML = '<i class="fas fa-tv"></i><p>Selecciona un canal</p>';
+      placeholder.style.display = "flex";
+    }
+  };
+
+  document.querySelectorAll(".tv-channel-item").forEach((item) => {
+    item.classList.toggle("active", item.dataset.chId === channel.id);
+  });
 
   const playerSection = document.getElementById("tv-player-section");
   if (playerSection) {
     playerSection.scrollIntoView({ behavior: "smooth", block: "start" });
   }
+}
 
   document.querySelectorAll(".tv-channel-item").forEach((item) => {
     item.classList.toggle("active", item.dataset.chId === channel.id);
