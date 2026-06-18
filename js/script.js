@@ -4276,7 +4276,10 @@ window.navigateToView = async function navigateToView(view) {
     if (view !== "genre-results") exitCategoryHeader();
 
 
-    / Detener reproducción TV al salir de la sección
+      // Restaurar header normal si veníamos de una categoría
+    if (view !== "genre-results") exitCategoryHeader();
+
+    // Detener reproducción TV al salir de la sección
     if (currentView === "tv" && view !== "tv") {
       const tvIframe = document.getElementById("tv-player-iframe");
       const tvPlaceholder = document.getElementById("tv-player-placeholder");
