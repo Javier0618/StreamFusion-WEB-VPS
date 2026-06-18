@@ -1545,6 +1545,16 @@ function updateUIForLoggedInUser() {
       });
       profileDropdown.appendChild(connectedUsersLinkItem);
 
+            const tvAdminLinkItem = document.createElement("div");
+      tvAdminLinkItem.className = "profile-dropdown-item";
+      tvAdminLinkItem.id = "tv-admin-link";
+      tvAdminLinkItem.innerHTML = `<i class="fas fa-tv"></i><span>Panel TV</span>`;
+      tvAdminLinkItem.addEventListener("click", () => {
+        profileDropdown.classList.remove("active");
+        navigateToView("tv-admin");
+      });
+      profileDropdown.appendChild(tvAdminLinkItem);
+
       if (settingsTab) {
         settingsTab.style.display = "block";
       }
@@ -4295,6 +4305,8 @@ window.navigateToView = async function navigateToView(view) {
         search: "search-view",
         "genre-results": "genre-results-view",
         "en-estreno": "en-estreno-view",
+        tv: "tv-view",
+        "tv-admin": "tv-admin-panel",
       };
       const targetId = viewToIdMap[view];
       if (targetId) {
@@ -4481,6 +4493,20 @@ window.navigateToView = async function navigateToView(view) {
         setupInfiniteScroll(doramasGrid, renderNextContentBatch);
         renderCategoriesByType("doramas-categories-container", "doramas");
         targetView.classList.remove("loading-state");
+        break;
+              case "tv":
+        targetView = document.getElementById("tv-view");
+        document
+          .querySelector('.nav-link[data-section="tv"]')
+          ?.classList.add("active");
+        document
+          .querySelector('.bottom-nav-item[data-section="tv"]')
+          ?.classList.add("active");
+        await loadTvChannels();
+        break;
+      case "tv-admin":
+        targetView = document.getElementById("tv-admin-panel");
+        await loadTvAdminData();
         break;
       case "en-estreno":
         targetView = enEstrenoView;
@@ -9964,4 +9990,612 @@ if (document.readyState === "loading") {
   setTimeout(() => {
     swipeNavigation.init();
   }, 500);
+}
+
+// ================================================================
+// ████████████████  TV EN VIVO - Módulo completo  ████████████████
+// ================================================================
+
+let tvChannels = [];
+let tvFavorites = [];
+let tvActiveCategory = "all";
+let tvActiveTab = "category";
+let tvCurrentChannel = null;
+let tvSectionEnabled = true;
+let tvAdminChannels = [];
+let tvEditingChannelId = null;
+
+function injectTvHTML() {
+  const tvViewHTML = `
+<div id="tv-view" class="page-view">
+  <div class="tv-player-section" id="tv-player-section">
+    <div class="tv-active-logo-wrap" id="tv-active-logo-wrap" style="display:none">
+      <img id="tv-active-logo-img" src="" alt="Canal activo" />
+    </div>
+    <div class="tv-player-wrapper" id="tv-player-wrapper">
+      <div class="tv-player-placeholder" id="tv-player-placeholder">
+        <i class="fas fa-tv"></i>
+        <p>Selecciona un canal</p>
+      </div>
+      <iframe id="tv-player-iframe" src="" frameborder="0"
+        allowfullscreen allow="autoplay; encrypted-media"
+        style="display:none; width:100%; height:100%; border:none;"></iframe>
+    </div>
+    <div class="tv-controls-bar">
+      <button class="tv-ctrl-btn" id="tv-mute-btn" title="Silenciar">
+        <i class="fas fa-volume-up"></i>
+      </button>
+      <button class="tv-ctrl-btn" id="tv-fullscreen-btn" title="Pantalla completa">
+        <i class="fas fa-expand"></i>
+      </button>
+    </div>
+  </div>
+  <div class="tv-tabs-bar">
+    <button class="tv-tab active" data-tv-tab="category">Categoría</button>
+    <button class="tv-tab" data-tv-tab="favorites">Favoritos</button>
+  </div>
+  <div class="tv-category-pills" id="tv-category-pills"></div>
+  <div class="tv-channel-list" id="tv-channel-list">
+    <div class="tv-loading"><i class="fas fa-spinner fa-spin"></i> Cargando canales...</div>
+  </div>
+</div>`;
+
+  const tvAdminHTML = `
+<div id="tv-admin-panel" class="page-view tv-admin-panel-view">
+  <div class="tv-admin-top-bar">
+    <button class="back-button" id="back-from-tv-admin">
+      <i class="fas fa-arrow-left"></i> Volver
+    </button>
+    <h2 class="tv-admin-title"><i class="fas fa-tv"></i> Panel TV en Vivo</h2>
+  </div>
+
+  <div class="tv-admin-toggle-row">
+    <span class="tv-admin-toggle-label">Mostrar sección TV en la app</span>
+    <label class="tv-switch">
+      <input type="checkbox" id="tv-section-toggle" checked>
+      <span class="tv-switch-slider"></span>
+    </label>
+  </div>
+
+  <div class="tv-admin-form-card">
+    <h3 id="tv-form-title">Agregar Canal</h3>
+    <input type="hidden" id="tv-edit-id">
+    <div class="tv-admin-form-grid">
+      <div class="tv-form-group">
+        <label>Número</label>
+        <input type="number" id="tv-ch-number" placeholder="078" min="1">
+      </div>
+      <div class="tv-form-group">
+        <label>Nombre del Canal</label>
+        <input type="text" id="tv-ch-name" placeholder="Cartoon Network HD">
+      </div>
+      <div class="tv-form-group">
+        <label>URL del Stream</label>
+        <input type="text" id="tv-ch-url" placeholder="https://...">
+      </div>
+      <div class="tv-form-group">
+        <label>URL del Logo</label>
+        <input type="text" id="tv-ch-logo" placeholder="https://...logo.png">
+      </div>
+      <div class="tv-form-group">
+        <label>Categoría</label>
+        <input type="text" id="tv-ch-category" placeholder="General, Deportes, Infantil...">
+      </div>
+    </div>
+    <div class="tv-admin-form-btns">
+      <button class="tv-admin-save-btn" id="tv-save-btn">
+        <i class="fas fa-save"></i> Guardar Canal
+      </button>
+      <button class="tv-admin-cancel-btn" id="tv-cancel-btn" style="display:none;">
+        <i class="fas fa-times"></i> Cancelar
+      </button>
+    </div>
+  </div>
+
+  <div class="tv-admin-channels-section">
+    <h3>Canales Configurados</h3>
+    <div class="tv-admin-channels-list" id="tv-admin-channels-list">
+      <div class="tv-loading"><i class="fas fa-spinner fa-spin"></i> Cargando...</div>
+    </div>
+  </div>
+</div>`;
+
+  const bottomNav = document.querySelector(".bottom-nav");
+  if (bottomNav) {
+    bottomNav.insertAdjacentHTML("beforebegin", tvViewHTML);
+    bottomNav.insertAdjacentHTML("beforebegin", tvAdminHTML);
+  } else {
+    document.body.insertAdjacentHTML("beforeend", tvViewHTML);
+    document.body.insertAdjacentHTML("beforeend", tvAdminHTML);
+  }
+
+  if (bottomNav) {
+    const tvNavItem = document.createElement("a");
+    tvNavItem.href = "#";
+    tvNavItem.className = "bottom-nav-item";
+    tvNavItem.setAttribute("data-section", "tv");
+    tvNavItem.innerHTML = '<i class="fas fa-tv"></i><span>TV</span>';
+    bottomNav.appendChild(tvNavItem);
+    tvNavItem.addEventListener("click", function (e) {
+      e.preventDefault();
+      navigateToView("tv");
+    });
+  }
+
+  const navLinks = document.querySelector(".nav-links");
+  if (navLinks) {
+    const tvNavLink = document.createElement("a");
+    tvNavLink.href = "#";
+    tvNavLink.className = "nav-link";
+    tvNavLink.setAttribute("data-section", "tv");
+    tvNavLink.textContent = "TV";
+    navLinks.appendChild(tvNavLink);
+    tvNavLink.addEventListener("click", function (e) {
+      e.preventDefault();
+      navigateToView("tv");
+    });
+  }
+
+  document
+    .getElementById("tv-fullscreen-btn")
+    ?.addEventListener("click", tvToggleFullscreen);
+  document
+    .getElementById("tv-mute-btn")
+    ?.addEventListener("click", tvToggleMute);
+  document
+    .getElementById("back-from-tv-admin")
+    ?.addEventListener("click", () => navigateToView("home"));
+  document
+    .getElementById("tv-save-btn")
+    ?.addEventListener("click", tvSaveChannel);
+  document
+    .getElementById("tv-cancel-btn")
+    ?.addEventListener("click", tvCancelEdit);
+  document
+    .getElementById("tv-section-toggle")
+    ?.addEventListener("change", tvToggleSection);
+
+  document.querySelectorAll(".tv-tab").forEach((tab) => {
+    tab.addEventListener("click", function () {
+      document
+        .querySelectorAll(".tv-tab")
+        .forEach((t) => t.classList.remove("active"));
+      this.classList.add("active");
+      tvActiveTab = this.dataset.tvTab;
+      if (tvActiveTab === "favorites") {
+        renderTvFavorites();
+      } else {
+        const filtered =
+          tvActiveCategory === "all"
+            ? tvChannels
+            : tvChannels.filter((c) => c.category === tvActiveCategory);
+        renderTvChannelList(filtered);
+      }
+    });
+  });
+}
+
+async function loadTvChannels() {
+  const listEl = document.getElementById("tv-channel-list");
+  if (!listEl) return;
+  listEl.innerHTML =
+    '<div class="tv-loading"><i class="fas fa-spinner fa-spin"></i> Cargando canales...</div>';
+
+  try {
+    const configDoc = await getDoc(doc(db, "web_config", "settings"));
+    if (configDoc.exists()) {
+      const data = configDoc.data();
+      tvSectionEnabled = data.tvEnabled !== false;
+    }
+
+    if (!tvSectionEnabled) {
+      listEl.innerHTML =
+        '<div class="tv-empty"><i class="fas fa-tv"></i><p>Sección TV deshabilitada</p></div>';
+      return;
+    }
+
+    const snap = await getDocs(collection(db, "live_channels"));
+    tvChannels = [];
+    snap.forEach((docSnap) => {
+      tvChannels.push({ id: docSnap.id, ...docSnap.data() });
+    });
+    tvChannels.sort((a, b) => (a.number || 0) - (b.number || 0));
+
+    tvFavorites = JSON.parse(
+      localStorage.getItem("sf_tv_favorites") || "[]"
+    );
+
+    renderTvCategoryPills(tvChannels);
+    renderTvChannelList(tvChannels);
+  } catch (err) {
+    console.error("Error cargando canales TV:", err);
+    listEl.innerHTML =
+      '<div class="tv-empty"><i class="fas fa-exclamation-circle"></i><p>Error al cargar canales</p></div>';
+  }
+}
+
+function renderTvCategoryPills(channels) {
+  const pillsEl = document.getElementById("tv-category-pills");
+  if (!pillsEl) return;
+
+  const categories = [
+    "Todos",
+    ...new Set(channels.map((c) => c.category).filter(Boolean)),
+  ];
+
+  pillsEl.innerHTML = categories
+    .map((cat) => {
+      const val = cat === "Todos" ? "all" : cat;
+      const isActive = tvActiveCategory === val;
+      return `<button class="tv-pill${isActive ? " active" : ""}" data-cat="${val}">${cat}</button>`;
+    })
+    .join("");
+
+  pillsEl.querySelectorAll(".tv-pill").forEach((pill) => {
+    pill.addEventListener("click", function () {
+      pillsEl
+        .querySelectorAll(".tv-pill")
+        .forEach((p) => p.classList.remove("active"));
+      this.classList.add("active");
+      tvActiveCategory = this.dataset.cat;
+      const filtered =
+        tvActiveCategory === "all"
+          ? tvChannels
+          : tvChannels.filter((c) => c.category === tvActiveCategory);
+      renderTvChannelList(filtered);
+    });
+  });
+}
+
+function renderTvChannelList(channels) {
+  const listEl = document.getElementById("tv-channel-list");
+  if (!listEl) return;
+
+  if (!channels || channels.length === 0) {
+    listEl.innerHTML =
+      '<div class="tv-empty"><i class="fas fa-tv"></i><p>No hay canales en esta categoría</p></div>';
+    return;
+  }
+
+  listEl.innerHTML = channels
+    .map((ch) => {
+      const numStr = ch.number ? String(ch.number).padStart(3, "0") : "---";
+      const isFav = tvFavorites.includes(ch.id);
+      return `
+      <div class="tv-channel-item${tvCurrentChannel?.id === ch.id ? " active" : ""}" data-ch-id="${ch.id}">
+        <div class="tv-ch-logo">
+          <img src="${ch.logo || ""}" alt="${ch.name || ""}"
+            onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+          <div class="tv-ch-logo-fallback" style="display:none"><i class="fas fa-tv"></i></div>
+        </div>
+        <div class="tv-ch-info">
+          <div class="tv-ch-number-name">
+            <span class="tv-ch-number">${numStr}</span>
+            <span class="tv-ch-name">${ch.name || "Sin nombre"}</span>
+          </div>
+          <div class="tv-ch-status">Recibiendo la programación</div>
+        </div>
+        <div class="tv-ch-actions">
+          <button class="tv-fav-btn${isFav ? " active" : ""}" data-ch-id="${ch.id}" title="Favorito">
+            <i class="${isFav ? "fas" : "far"} fa-heart"></i>
+          </button>
+          <button class="tv-play-btn" data-ch-id="${ch.id}" title="Ver canal">
+            <i class="fas fa-arrow-right"></i>
+          </button>
+        </div>
+      </div>`;
+    })
+    .join("");
+
+  listEl.querySelectorAll(".tv-play-btn").forEach((btn) => {
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      const ch = tvChannels.find((c) => c.id === this.dataset.chId);
+      if (ch) selectTvChannel(ch);
+    });
+  });
+
+  listEl.querySelectorAll(".tv-channel-item").forEach((item) => {
+    item.addEventListener("click", function (e) {
+      if (e.target.closest(".tv-fav-btn") || e.target.closest(".tv-play-btn"))
+        return;
+      const ch = tvChannels.find((c) => c.id === this.dataset.chId);
+      if (ch) selectTvChannel(ch);
+    });
+  });
+
+  listEl.querySelectorAll(".tv-fav-btn").forEach((btn) => {
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      tvToggleFavorite(this.dataset.chId);
+    });
+  });
+}
+
+function renderTvFavorites() {
+  const favChannels = tvChannels.filter((ch) => tvFavorites.includes(ch.id));
+  renderTvChannelList(favChannels);
+}
+
+function selectTvChannel(channel) {
+  tvCurrentChannel = channel;
+
+  const logoImg = document.getElementById("tv-active-logo-img");
+  const logoWrap = document.getElementById("tv-active-logo-wrap");
+  if (logoImg && channel.logo) {
+    logoImg.src = channel.logo;
+    logoImg.alt = channel.name;
+    if (logoWrap) logoWrap.style.display = "flex";
+  } else if (logoWrap) {
+    logoWrap.style.display = "none";
+  }
+
+  const iframe = document.getElementById("tv-player-iframe");
+  const placeholder = document.getElementById("tv-player-placeholder");
+  if (iframe) {
+    iframe.src = channel.url;
+    iframe.style.display = "block";
+    if (placeholder) placeholder.style.display = "none";
+  }
+
+  const playerSection = document.getElementById("tv-player-section");
+  if (playerSection) {
+    playerSection.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  document.querySelectorAll(".tv-channel-item").forEach((item) => {
+    item.classList.toggle("active", item.dataset.chId === channel.id);
+  });
+}
+
+function tvToggleFavorite(chId) {
+  const idx = tvFavorites.indexOf(chId);
+  if (idx === -1) {
+    tvFavorites.push(chId);
+  } else {
+    tvFavorites.splice(idx, 1);
+  }
+  localStorage.setItem("sf_tv_favorites", JSON.stringify(tvFavorites));
+
+  if (tvActiveTab === "favorites") {
+    renderTvFavorites();
+  } else {
+    const filtered =
+      tvActiveCategory === "all"
+        ? tvChannels
+        : tvChannels.filter((c) => c.category === tvActiveCategory);
+    renderTvChannelList(filtered);
+  }
+}
+
+let tvMuted = false;
+function tvToggleMute() {
+  tvMuted = !tvMuted;
+  const btn = document.getElementById("tv-mute-btn");
+  if (btn)
+    btn.innerHTML = `<i class="fas fa-volume-${tvMuted ? "mute" : "up"}"></i>`;
+}
+
+function tvToggleFullscreen() {
+  const wrapper = document.getElementById("tv-player-wrapper");
+  if (!wrapper) return;
+  if (!document.fullscreenElement) {
+    wrapper.requestFullscreen?.();
+  } else {
+    document.exitFullscreen?.();
+  }
+}
+
+async function loadTvAdminData() {
+  const listEl = document.getElementById("tv-admin-channels-list");
+  if (!listEl) return;
+  listEl.innerHTML =
+    '<div class="tv-loading"><i class="fas fa-spinner fa-spin"></i> Cargando...</div>';
+
+  try {
+    const configDoc = await getDoc(doc(db, "web_config", "settings"));
+    if (configDoc.exists()) {
+      const data = configDoc.data();
+      const toggle = document.getElementById("tv-section-toggle");
+      if (toggle) toggle.checked = data.tvEnabled !== false;
+    }
+
+    const snap = await getDocs(collection(db, "live_channels"));
+    tvAdminChannels = [];
+    snap.forEach((docSnap) => {
+      tvAdminChannels.push({ id: docSnap.id, ...docSnap.data() });
+    });
+    tvAdminChannels.sort((a, b) => (a.number || 0) - (b.number || 0));
+
+    renderTvAdminChannelList();
+  } catch (err) {
+    console.error("Error cargando admin TV:", err);
+    listEl.innerHTML = '<div class="tv-empty">Error al cargar los datos</div>';
+  }
+}
+
+function renderTvAdminChannelList() {
+  const listEl = document.getElementById("tv-admin-channels-list");
+  if (!listEl) return;
+
+  if (tvAdminChannels.length === 0) {
+    listEl.innerHTML =
+      '<div class="tv-empty"><p>No hay canales configurados.</p></div>';
+    return;
+  }
+
+  listEl.innerHTML = tvAdminChannels
+    .map((ch) => {
+      const numStr = ch.number ? String(ch.number).padStart(3, "0") : "---";
+      return `
+      <div class="tv-admin-ch-item">
+        <div class="tv-admin-ch-logo">
+          <img src="${ch.logo || ""}" alt="${ch.name || ""}" onerror="this.style.display='none'">
+        </div>
+        <div class="tv-admin-ch-info">
+          <span class="tv-admin-ch-num">${numStr}</span>
+          <span class="tv-admin-ch-name">${ch.name || "Sin nombre"}</span>
+          <span class="tv-admin-ch-cat">${ch.category || "General"}</span>
+        </div>
+        <div class="tv-admin-ch-btns">
+          <button class="tv-admin-edit-btn" data-ch-id="${ch.id}" title="Editar">
+            <i class="fas fa-edit"></i>
+          </button>
+          <button class="tv-admin-delete-btn" data-ch-id="${ch.id}" title="Eliminar">
+            <i class="fas fa-trash"></i>
+          </button>
+        </div>
+      </div>`;
+    })
+    .join("");
+
+  listEl.querySelectorAll(".tv-admin-edit-btn").forEach((btn) => {
+    btn.addEventListener("click", function () {
+      tvStartEdit(this.dataset.chId);
+    });
+  });
+
+  listEl.querySelectorAll(".tv-admin-delete-btn").forEach((btn) => {
+    btn.addEventListener("click", function () {
+      tvDeleteChannel(this.dataset.chId);
+    });
+  });
+}
+
+function tvStartEdit(chId) {
+  const ch = tvAdminChannels.find((c) => c.id === chId);
+  if (!ch) return;
+  tvEditingChannelId = chId;
+
+  document.getElementById("tv-form-title").textContent = "Editar Canal";
+  document.getElementById("tv-edit-id").value = chId;
+  document.getElementById("tv-ch-number").value = ch.number || "";
+  document.getElementById("tv-ch-name").value = ch.name || "";
+  document.getElementById("tv-ch-url").value = ch.url || "";
+  document.getElementById("tv-ch-logo").value = ch.logo || "";
+  document.getElementById("tv-ch-category").value = ch.category || "";
+  document.getElementById("tv-cancel-btn").style.display = "inline-flex";
+  document
+    .getElementById("tv-form-title")
+    .scrollIntoView({ behavior: "smooth" });
+}
+
+function tvCancelEdit() {
+  tvEditingChannelId = null;
+  document.getElementById("tv-form-title").textContent = "Agregar Canal";
+  document.getElementById("tv-edit-id").value = "";
+  document.getElementById("tv-ch-number").value = "";
+  document.getElementById("tv-ch-name").value = "";
+  document.getElementById("tv-ch-url").value = "";
+  document.getElementById("tv-ch-logo").value = "";
+  document.getElementById("tv-ch-category").value = "";
+  document.getElementById("tv-cancel-btn").style.display = "none";
+}
+
+async function tvSaveChannel() {
+  const name = document.getElementById("tv-ch-name").value.trim();
+  const url = document.getElementById("tv-ch-url").value.trim();
+  const logo = document.getElementById("tv-ch-logo").value.trim();
+  const category = document.getElementById("tv-ch-category").value.trim();
+  const number = parseInt(document.getElementById("tv-ch-number").value) || 0;
+
+  if (!name || !url) {
+    alert("El nombre y la URL del stream son obligatorios.");
+    return;
+  }
+
+  const saveBtn = document.getElementById("tv-save-btn");
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.innerHTML =
+      '<i class="fas fa-spinner fa-spin"></i> Guardando...';
+  }
+
+  try {
+    const channelData = { name, url, logo, category, number };
+    if (tvEditingChannelId) {
+      await updateDoc(
+        doc(db, "live_channels", tvEditingChannelId),
+        channelData
+      );
+    } else {
+      await addDoc(collection(db, "live_channels"), channelData);
+    }
+    tvCancelEdit();
+    await loadTvAdminData();
+  } catch (err) {
+    console.error("Error guardando canal TV:", err);
+    alert("Error al guardar el canal: " + err.message);
+  } finally {
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = '<i class="fas fa-save"></i> Guardar Canal';
+    }
+  }
+}
+
+async function tvDeleteChannel(chId) {
+  if (!confirm("¿Eliminar este canal? Esta acción no se puede deshacer."))
+    return;
+  try {
+    await deleteDoc(doc(db, "live_channels", chId));
+    await loadTvAdminData();
+  } catch (err) {
+    console.error("Error eliminando canal TV:", err);
+    alert("Error al eliminar el canal: " + err.message);
+  }
+}
+
+async function tvToggleSection() {
+  const toggle = document.getElementById("tv-section-toggle");
+  const enabled = toggle?.checked ?? true;
+  try {
+    const configRef = doc(db, "web_config", "settings");
+    const configSnap = await getDoc(configRef);
+    if (configSnap.exists()) {
+      await updateDoc(configRef, { tvEnabled: enabled });
+    } else {
+      await setDoc(configRef, { tvEnabled: enabled });
+    }
+    tvSectionEnabled = enabled;
+    const tvNavBtn = document.querySelector(
+      '.bottom-nav-item[data-section="tv"]'
+    );
+    const tvNavLink = document.querySelector('.nav-link[data-section="tv"]');
+    if (tvNavBtn) tvNavBtn.style.display = enabled ? "" : "none";
+    if (tvNavLink) tvNavLink.style.display = enabled ? "" : "none";
+  } catch (err) {
+    console.error("Error actualizando config TV:", err);
+    if (toggle) toggle.checked = !enabled;
+    alert("Error al actualizar la configuración: " + err.message);
+  }
+}
+
+async function checkTvEnabled() {
+  try {
+    const configDoc = await getDoc(doc(db, "web_config", "settings"));
+    if (configDoc.exists()) {
+      const data = configDoc.data();
+      tvSectionEnabled = data.tvEnabled !== false;
+    }
+    const tvNavBtn = document.querySelector(
+      '.bottom-nav-item[data-section="tv"]'
+    );
+    const tvNavLink = document.querySelector('.nav-link[data-section="tv"]');
+    if (tvNavBtn) tvNavBtn.style.display = tvSectionEnabled ? "" : "none";
+    if (tvNavLink) tvNavLink.style.display = tvSectionEnabled ? "" : "none";
+  } catch (err) {
+    console.error("Error verificando TV:", err);
+  }
+}
+
+function initTvModule() {
+  injectTvHTML();
+  checkTvEnabled();
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initTvModule);
+} else {
+  initTvModule();
 }
