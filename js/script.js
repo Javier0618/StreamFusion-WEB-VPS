@@ -4350,6 +4350,7 @@ window.navigateToView = async function navigateToView(view) {
         if (!homeView.innerHTML.trim()) {
           await loadDeferredContent();
         }
+        cwRenderSection();
         break;
       case "movies":
         targetView = moviesView;
