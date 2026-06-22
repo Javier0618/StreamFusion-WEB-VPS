@@ -10821,9 +10821,8 @@ function cwRenderSection() {
       if (e.target.closest(".cw-remove-btn")) return;
       const id   = this.dataset.cwId;
       const type = this.dataset.cwType || "movie";
-      // Reusar la función nativa de apertura de modal
-      if (typeof showMovieDetails === "function") {
-        showMovieDetails(id, type, false);
+      if (typeof showMovieDetailsModal === "function") {
+        showMovieDetailsModal(id, type, false);
       }
     });
   });
