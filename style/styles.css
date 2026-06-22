@@ -6092,6 +6092,7 @@ _This response is too long to display in full._
 }
 
 .cw-rating {
+  display: none;
   position: absolute;
   bottom: 5px;
   left: 5px;
