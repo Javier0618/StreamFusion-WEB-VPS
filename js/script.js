@@ -4851,22 +4851,8 @@ async function loadDeferredContent() {
       recentlyAddedContent.slice(0, recienAgregado),
     );
 
-    // "Trending" (Top 10) - This section remains fixed to 10
-    if (currentUser) {
-      const trending = await fetchTrendingPostersFromFirebase();
-      await renderContentSlider(trendingSlider, trending);
-    } else {
-      const randomTop10 = shuffleArray(allContent).slice(0, 10);
-      const formattedRandomTop10 = randomTop10.map((item) => ({
-        posterId: item.id,
-        mediaType: item.media_type,
-        title: item.title || item.name,
-        posterPath: item.poster_path,
-        vote_average: item.vote_average,
-        release_date: item.release_date || item.first_air_date,
-      }));
-      await renderContentSlider(trendingSlider, formattedRandomTop10);
-    }
+    // "Trending" (Top 10) - Selección aleatoria diaria (mismos 10 todo el día)
+    await renderContentSlider(trendingSlider, getDailyTop10(allContent));
 
     // "Popular Movies" (random slice from all movies)
     await renderContentSlider(
@@ -10682,6 +10668,48 @@ if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", initTvModule);
 } else {
   initTvModule();
+}
+
+
+// ================================================================
+// TOP 10 DIARIO — Selección aleatoria fija por día
+// ================================================================
+function getDailyTop10(contentPool) {
+  const TOP10_KEY = "sf_top10_daily";
+  const today     = new Date().toISOString().slice(0, 10); // "2026-06-22"
+
+  // Intentar usar la caché del día
+  try {
+    const cached = JSON.parse(localStorage.getItem(TOP10_KEY) || "null");
+    if (
+      cached &&
+      cached.date === today &&
+      Array.isArray(cached.items) &&
+      cached.items.length === 10
+    ) {
+      return cached.items; // Mismos 10 de hoy
+    }
+  } catch {}
+
+  // No hay caché válida → elegir 10 nuevos al azar
+  const pool = contentPool || (typeof allContent !== "undefined" ? allContent : []);
+  if (pool.length === 0) return [];
+
+  const shuffled = shuffleArray([...pool]);
+  const selected = shuffled.slice(0, 10);
+
+  const formatted = selected.map((item) => ({
+    posterId:     item.id,
+    mediaType:    item.media_type,
+    title:        item.title || item.name,
+    posterPath:   item.poster_path,
+    vote_average: item.vote_average,
+    release_date: item.release_date || item.first_air_date,
+  }));
+
+  // Guardar con fecha de hoy
+  localStorage.setItem(TOP10_KEY, JSON.stringify({ date: today, items: formatted }));
+  return formatted;
 }
 
 
