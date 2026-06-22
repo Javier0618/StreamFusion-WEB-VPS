@@ -10682,3 +10682,185 @@ if (document.readyState === "loading") {
 } else {
   initTvModule();
 }
+
+
+// ================================================================
+// ████████  CONTINUAR VIENDO - Módulo completo (v2)  ████████
+// ================================================================
+
+const CW_KEY = "sf_continue_watching";
+const CW_MAX  = 20;
+
+// ---------- Leer / guardar historial ----------
+function cwGetHistory() {
+  try { return JSON.parse(localStorage.getItem(CW_KEY) || "[]"); }
+  catch { return []; }
+}
+function cwSaveHistory(list) {
+  localStorage.setItem(CW_KEY, JSON.stringify(list));
+}
+function cwAddItem(item) {
+  if (!item || !item.id) return;
+  let list = cwGetHistory();
+  list = list.filter((i) => String(i.id) !== String(item.id));
+  list.unshift({
+    id:           item.id,
+    title:        item.title || item.name || "Sin título",
+    poster_path:  item.poster_path || "",
+    media_type:   item.media_type || "movie",
+    vote_average: item.vote_average || 0,
+    timestamp:    Date.now(),
+  });
+  if (list.length > CW_MAX) list = list.slice(0, CW_MAX);
+  cwSaveHistory(list);
+  cwRenderSection();
+}
+function cwRemoveItem(itemId) {
+  cwSaveHistory(cwGetHistory().filter((i) => String(i.id) !== String(itemId)));
+  cwRenderSection();
+}
+
+// ---------- Inyectar sección en el DOM ----------
+function cwInjectSection() {
+  if (document.getElementById("continue-watching-section")) return;
+
+  const html = `
+<section class="content-row cw-section" id="continue-watching-section" style="display:none">
+  <div class="row-header">
+    <h2 class="section-title">
+      <i class="fas fa-history" style="color:var(--secondary-color);margin-right:6px;font-size:1rem;"></i>
+      Continuar Viendo
+    </h2>
+    <button class="cw-clear-btn" id="cw-clear-all">
+      <i class="fas fa-trash-alt"></i> Limpiar
+    </button>
+  </div>
+  <div class="content-slider">
+    <div class="slider-container" id="cw-slider"></div>
+    <div class="slider-controls">
+      <button class="slider-arrow slider-prev"><i class="fas fa-chevron-left"></i></button>
+      <button class="slider-arrow slider-next"><i class="fas fa-chevron-right"></i></button>
+    </div>
+  </div>
+</section>`;
+
+  const anchor =
+    document.querySelector('[aria-labelledby="en-estreno-title"]') ||
+    document.querySelector(".main-container");
+  if (!anchor) return;
+
+  anchor.insertAdjacentHTML("afterend", html);
+
+  document.getElementById("cw-clear-all")?.addEventListener("click", () => {
+    if (confirm("¿Borrar todo el historial de Continuar Viendo?")) {
+      cwSaveHistory([]);
+      cwRenderSection();
+    }
+  });
+
+  const section = document.getElementById("continue-watching-section");
+  section?.querySelector(".slider-prev")?.addEventListener("click", () => {
+    document.getElementById("cw-slider")?.scrollBy({ left: -300, behavior: "smooth" });
+  });
+  section?.querySelector(".slider-next")?.addEventListener("click", () => {
+    document.getElementById("cw-slider")?.scrollBy({ left: 300, behavior: "smooth" });
+  });
+}
+
+// ---------- Renderizar tarjetas ----------
+function cwRenderSection() {
+  // Si la sección aún no existe en el DOM, inyectarla primero
+  if (!document.getElementById("continue-watching-section")) {
+    cwInjectSection();
+  }
+
+  const section = document.getElementById("continue-watching-section");
+  const slider  = document.getElementById("cw-slider");
+  if (!section || !slider) return;
+
+  const list = cwGetHistory();
+  if (list.length === 0) { section.style.display = "none"; return; }
+
+  section.style.display = "";
+
+  slider.innerHTML = list.map((item) => {
+    const poster = item.poster_path
+      ? `https://image.tmdb.org/t/p/w300${item.poster_path}`
+      : "https://via.placeholder.com/150x225?text=Sin+imagen";
+    const rating = item.vote_average
+      ? `⭐ ${Number(item.vote_average).toFixed(1)}`
+      : "";
+    return `
+<div class="content-card cw-card" data-cw-id="${item.id}" data-cw-type="${item.media_type}">
+  <div class="card-poster-wrapper" style="position:relative">
+    <img class="card-poster" src="${poster}" alt="${item.title}" loading="lazy"
+      onerror="this.src='https://via.placeholder.com/150x225?text=Sin+imagen'">
+    <button class="cw-remove-btn" data-cw-remove="${item.id}">
+      <i class="fas fa-times"></i>
+    </button>
+    ${rating ? `<span class="cw-rating">${rating}</span>` : ""}
+  </div>
+  <div class="card-title-bottom" style="padding:0.4rem 0 0;height:1.4rem;overflow:hidden;width:100%;">
+    <h3 style="font-size:0.8rem;font-weight:500;color:var(--text-color);margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${item.title}</h3>
+  </div>
+</div>`;
+  }).join("");
+
+  // Quitar ítem individual
+  slider.querySelectorAll(".cw-remove-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      cwRemoveItem(btn.dataset.cwRemove);
+    });
+  });
+
+  // Click en tarjeta → abrir modal
+  slider.querySelectorAll(".cw-card").forEach((card) => {
+    card.addEventListener("click", function (e) {
+      if (e.target.closest(".cw-remove-btn")) return;
+      const id   = this.dataset.cwId;
+      const type = this.dataset.cwType || "movie";
+      // Reusar la función nativa de apertura de modal
+      if (typeof showMovieDetails === "function") {
+        showMovieDetails(id, type, false);
+      }
+    });
+  });
+}
+
+// ---------- HOOK FIABLE: envolver updatePosterClickCount ----------
+// updatePosterClickCount se llama siempre antes de renderModalContent,
+// con todos los datos que necesitamos.
+(function cwHookPosterClick() {
+  // Reintentar hasta que la función esté disponible
+  function tryHook() {
+    if (typeof updatePosterClickCount === "function") {
+      const _orig = updatePosterClickCount;
+      // Reasignar (es function declaration, por lo tanto writable)
+      updatePosterClickCount = async function (id, type, title, poster_path, vote_average) {
+        // Guardar en historial
+        cwAddItem({ id, media_type: type, title, poster_path, vote_average });
+        // Llamar la función original
+        return _orig(id, type, title, poster_path, vote_average);
+      };
+      console.log("[CW] Hook de updatePosterClickCount activado ✓");
+    } else {
+      setTimeout(tryHook, 300);
+    }
+  }
+  tryHook();
+})();
+
+// ---------- Inicialización ----------
+(function cwInit() {
+  function run() {
+    cwInjectSection();
+    cwRenderSection();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => setTimeout(run, 600));
+  } else {
+    setTimeout(run, 600);
+  }
+})();
