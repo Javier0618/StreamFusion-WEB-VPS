@@ -4281,13 +4281,21 @@ window.navigateToView = async function navigateToView(view) {
 
     // Detener reproducción TV al salir de la sección
     if (currentView === "tv" && view !== "tv") {
-      const tvIframe = document.getElementById("tv-player-iframe");
-      const tvPlaceholder = document.getElementById("tv-player-placeholder");
-      if (tvIframe) {
-        tvIframe.src = "";
-        tvIframe.style.display = "none";
-      }
-      if (tvPlaceholder) tvPlaceholder.style.display = "flex";
+      const tvIframe        = document.getElementById("tv-player-iframe");
+      const tvVideo         = document.getElementById("tv-player-video");
+      const tvVideoContainer = document.getElementById("tv-video-container");
+      const tvPlaceholder   = document.getElementById("tv-player-placeholder");
+      const tvControlsBar   = document.getElementById("tv-controls-bar");
+
+      if (tvIframe)         { tvIframe.src = ""; tvIframe.style.display = "none"; }
+      if (tvVideo)          { try { tvVideo.pause(); } catch(e){} tvVideo.src = ""; }
+      if (tvVideoContainer) tvVideoContainer.style.display = "none";
+      if (tvPlaceholder)    tvPlaceholder.style.display = "flex";
+      if (tvControlsBar)    tvControlsBar.style.display = "none";
+
+      if (window._tvHlsInstance)  { window._tvHlsInstance.destroy();  window._tvHlsInstance  = null; }
+      if (window._tvDashInstance) { try { window._tvDashInstance.reset(); } catch(e){} window._tvDashInstance = null; }
+
       const tvLogoWrap = document.getElementById("tv-active-logo-wrap");
       if (tvLogoWrap) tvLogoWrap.style.display = "none";
       tvCurrentChannel = null;
@@ -10026,8 +10034,23 @@ function injectTvHTML() {
   allowfullscreen allow="autoplay; encrypted-media"
   sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-fullscreen"
   style="display:none; width:100%; height:100%; border:none;"></iframe>
+      <!-- Player personalizado para streams directos HLS/DASH/MP4 -->
+      <div id="tv-video-container" style="display:none; position:absolute; inset:0; background:#000;">
+        <video id="tv-player-video" autoplay playsinline
+          style="width:100%; height:100%; display:block; object-fit:contain; background:#000;"></video>
+        <div class="tv-video-overlay" id="tv-video-overlay">
+          <button class="tv-overlay-btn" id="tv-overlay-mute-btn" title="Silenciar">
+            <i class="fas fa-volume-up" id="tv-overlay-mute-icon"></i>
+          </button>
+          <div class="tv-overlay-spacer"></div>
+          <button class="tv-overlay-btn" id="tv-overlay-fs-btn" title="Pantalla completa">
+            <i class="fas fa-expand" id="tv-overlay-fs-icon"></i>
+          </button>
+        </div>
+      </div>
     </div>
-    <div class="tv-controls-bar">
+    <!-- Barra de controles para iframe (embeds web) -->
+    <div class="tv-controls-bar" id="tv-controls-bar" style="display:none;">
       <button class="tv-ctrl-btn" id="tv-mute-btn" title="Silenciar">
         <i class="fas fa-volume-up"></i>
       </button>
@@ -10326,7 +10349,7 @@ function renderTvFavorites() {
 function selectTvChannel(channel) {
   tvCurrentChannel = channel;
 
-  const logoImg = document.getElementById("tv-active-logo-img");
+  const logoImg  = document.getElementById("tv-active-logo-img");
   const logoWrap = document.getElementById("tv-active-logo-wrap");
   if (logoImg && channel.logo) {
     logoImg.src = channel.logo;
@@ -10336,21 +10359,143 @@ function selectTvChannel(channel) {
     logoWrap.style.display = "none";
   }
 
-  const iframe = document.getElementById("tv-player-iframe");
-  const placeholder = document.getElementById("tv-player-placeholder");
-  if (iframe) {
-    iframe.src = channel.url;
-    iframe.style.display = "block";
-    if (placeholder) placeholder.style.display = "none";
+  const iframe         = document.getElementById("tv-player-iframe");
+  const videoContainer = document.getElementById("tv-video-container");
+  const video          = document.getElementById("tv-player-video");
+  const placeholder    = document.getElementById("tv-player-placeholder");
+  const controlsBar    = document.getElementById("tv-controls-bar");
+
+  // Ocultar todo
+  if (iframe)         { iframe.style.display = "none"; iframe.src = ""; }
+  if (videoContainer) videoContainer.style.display = "none";
+  if (video)          { try { video.pause(); } catch(e){} video.src = ""; }
+  if (placeholder)    placeholder.style.display = "none";
+  if (controlsBar)    controlsBar.style.display = "none";
+
+  // Destruir instancias anteriores
+  if (window._tvHlsInstance) {
+    window._tvHlsInstance.destroy();
+    window._tvHlsInstance = null;
   }
+  if (window._tvDashInstance) {
+    try { window._tvDashInstance.reset(); } catch(e) {}
+    window._tvDashInstance = null;
+  }
+
+  const url = (channel.url || "").trim();
+
+  // Detectar si es un stream directo (no una página web)
+  const isDirectStream = /\.(m3u8|m3u|mpd|mp4|webm|ogg|ts)(\?.*)?$/i.test(url)
+    || url.includes(".m3u8")
+    || url.includes(".m3u")
+    || url.includes(".mpd");
+
+  if (isDirectStream && video && videoContainer) {
+    // ── Player personalizado con overlay ──
+    videoContainer.style.display = "block";
+
+    if (url.includes(".mpd")) {
+      // DASH
+      if (typeof dashjs !== "undefined") {
+        const dash = dashjs.MediaPlayer().create();
+        dash.initialize(video, url, true);
+        window._tvDashInstance = dash;
+      }
+    } else {
+      // HLS (m3u8, m3u, ts) o video directo
+      if (typeof Hls !== "undefined" && Hls.isSupported()) {
+        const hls = new Hls({ enableWorker: true, lowLatencyMode: true });
+        hls.loadSource(url);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+        window._tvHlsInstance = hls;
+      } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+        // Safari: HLS nativo
+        video.src = url;
+        video.play().catch(() => {});
+      } else {
+        // Fallback MP4/directo
+        video.src = url;
+        video.play().catch(() => {});
+      }
+    }
+
+    setupTvVideoOverlay(video, videoContainer);
+
+  } else {
+    // ── Embed web → iframe ──
+    if (iframe) {
+      iframe.src = url;
+      iframe.style.display = "block";
+    }
+    if (controlsBar) controlsBar.style.display = "flex";
+  }
+
+  document.querySelectorAll(".tv-channel-item").forEach((item) => {
+    item.classList.toggle("active", item.dataset.chId === channel.id);
+  });
 
   const playerSection = document.getElementById("tv-player-section");
   if (playerSection) {
     playerSection.scrollIntoView({ behavior: "smooth", block: "start" });
   }
+}
 
-  document.querySelectorAll(".tv-channel-item").forEach((item) => {
-    item.classList.toggle("active", item.dataset.chId === channel.id);
+function setupTvVideoOverlay(video, container) {
+  const overlay  = document.getElementById("tv-video-overlay");
+  const wrapper  = document.getElementById("tv-player-wrapper");
+
+  // Reemplazar botones para limpiar listeners anteriores
+  ["tv-overlay-mute-btn", "tv-overlay-fs-btn"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.replaceWith(el.cloneNode(true));
+  });
+
+  const muteBtn  = document.getElementById("tv-overlay-mute-btn");
+  const muteIcon = document.getElementById("tv-overlay-mute-icon");
+  const fsBtn    = document.getElementById("tv-overlay-fs-btn");
+  const fsIcon   = document.getElementById("tv-overlay-fs-icon");
+
+  // Mute / Unmute
+  muteBtn?.addEventListener("click", function (e) {
+    e.stopPropagation();
+    video.muted = !video.muted;
+    if (muteIcon) muteIcon.className = video.muted ? "fas fa-volume-mute" : "fas fa-volume-up";
+  });
+
+  // Pantalla completa
+  fsBtn?.addEventListener("click", function (e) {
+    e.stopPropagation();
+    const target = wrapper || container;
+    if (!document.fullscreenElement) {
+      (target.requestFullscreen?.() || target.webkitRequestFullscreen?.())?.catch(() => {});
+    } else {
+      (document.exitFullscreen?.() || document.webkitExitFullscreen?.())?.catch(() => {});
+    }
+  });
+
+  // Ícono fullscreen (registrar solo una vez con flag)
+  if (!window._tvFsListenerAdded) {
+    window._tvFsListenerAdded = true;
+    document.addEventListener("fullscreenchange", function () {
+      const icon = document.getElementById("tv-overlay-fs-icon");
+      if (icon) icon.className = document.fullscreenElement ? "fas fa-compress" : "fas fa-expand";
+    });
+  }
+
+  // Auto-ocultar overlay (aparece al hover/toque, se oculta a los 3s)
+  let hideTimer;
+  function showOverlay() {
+    if (overlay) overlay.classList.add("visible");
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => { if (overlay) overlay.classList.remove("visible"); }, 3000);
+  }
+
+  container.addEventListener("mousemove", showOverlay);
+  container.addEventListener("touchstart", showOverlay, { passive: true });
+  // Primer toque muestra controles sin pausar el video
+  container.addEventListener("click", function (e) {
+    if (!e.target.closest(".tv-overlay-btn")) showOverlay();
   });
 }
 
