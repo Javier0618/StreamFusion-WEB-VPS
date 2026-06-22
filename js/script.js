@@ -97,7 +97,7 @@ const translations = {
     "home.exploreByCategory": "Explorar por Categoría",
     "home.inTheaters": "En Estreno/Emisión",
     "home.recentlyAdded": "Recién Agregado",
-    "home.top10": "TOP 10 más vistos",
+    "home.top10": "TOP 10 del día",
     "home.popularMovies": "Películas populares",
     "home.popularSeries": "Series populares",
     "home.seeAll": "Ver todo",
