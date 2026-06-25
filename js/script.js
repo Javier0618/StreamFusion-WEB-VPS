@@ -10521,7 +10521,7 @@ function setupTvVideoOverlay(video, container) {
   const overlay = document.getElementById("tv-video-overlay");
   const wrapper = document.getElementById("tv-player-wrapper");
 
-  // Limpiar listeners anteriores clonando los botones
+  // Limpiar botones anteriores
   ["tv-overlay-mute-btn", "tv-overlay-fs-btn"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.replaceWith(el.cloneNode(true));
@@ -10530,16 +10530,15 @@ function setupTvVideoOverlay(video, container) {
   const muteBtn  = document.getElementById("tv-overlay-mute-btn");
   const muteIcon = document.getElementById("tv-overlay-mute-icon");
   const fsBtn    = document.getElementById("tv-overlay-fs-btn");
-  const fsIcon   = document.getElementById("tv-overlay-fs-icon");
 
-  // ── Mute / Unmute ──
+  // Mute
   muteBtn?.addEventListener("click", function (e) {
     e.stopPropagation();
     video.muted = !video.muted;
     if (muteIcon) muteIcon.className = video.muted ? "fas fa-volume-mute" : "fas fa-volume-up";
   });
 
-  // ── Pantalla completa ──
+  // Fullscreen
   fsBtn?.addEventListener("click", function (e) {
     e.stopPropagation();
     const target = wrapper || container;
@@ -10550,7 +10549,6 @@ function setupTvVideoOverlay(video, container) {
     }
   });
 
-  // Ícono fullscreen (registrar solo una vez)
   if (!window._tvFsListenerAdded) {
     window._tvFsListenerAdded = true;
     document.addEventListener("fullscreenchange", function () {
@@ -10559,39 +10557,20 @@ function setupTvVideoOverlay(video, container) {
     });
   }
 
-  // ── Toggle show/hide al tocar/hacer clic ──
-  // Limpiar listener anterior en el contenedor clonando
-  const newContainer = container;
-  const oldContainer = newContainer.cloneNode(false);
-  // No clonamos el container (tiene children), solo removemos listeners con flag
-  if (newContainer._tvOverlayListener) {
-    newContainer.removeEventListener("click", newContainer._tvOverlayListener);
+  // Eliminar click handler anterior si existe
+  if (container._tvClickHandler) {
+    container.removeEventListener("click", container._tvClickHandler);
+    delete container._tvClickHandler;
   }
 
-  let controlsVisible = false;
-
-  function toggleControls(e) {
-    // Si el clic fue en un botón de control, no hacer toggle
-    if (e.target.closest(".tv-overlay-btn")) return;
-    controlsVisible = !controlsVisible;
-    if (overlay) {
-      overlay.classList.toggle("visible", controlsVisible);
-    }
+  // Toggle simple: clic en el video → mostrar/ocultar controles
+  function clickHandler(e) {
+    if (e.target.closest(".tv-overlay-btn")) return; // no interferir con botones
+    if (overlay) overlay.classList.toggle("visible");
   }
 
-  newContainer._tvOverlayListener = toggleControls;
-  newContainer.addEventListener("click", toggleControls);
-
-  // Desktop: mouse-leave oculta los controles
-  newContainer.addEventListener("mouseleave", function () {
-    controlsVisible = false;
-    if (overlay) overlay.classList.remove("visible");
-  });
-
-  // Desktop: hover muestra temporalmente sin afectar el toggle
-  newContainer.addEventListener("mouseenter", function () {
-    if (overlay) overlay.classList.add("visible");
-  });
+  container._tvClickHandler = clickHandler;
+  container.addEventListener("click", clickHandler);
 }
 
 function tvToggleFavorite(chId) {
