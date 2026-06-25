@@ -6201,10 +6201,6 @@ _This response is too long to display in full._
 
 /* Móvil: botones siempre ligeramente visibles */
 @media (max-width: 768px) {
-  .tv-video-overlay {
-    opacity: 0.85;
-    pointer-events: all;
-  }
   .tv-overlay-btn {
     width: 42px;
     height: 42px;
