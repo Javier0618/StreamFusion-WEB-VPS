@@ -6150,7 +6150,6 @@ _This response is too long to display in full._
   z-index: 5;
 }
 
-#tv-video-container:hover .tv-video-overlay,
 .tv-video-overlay.visible {
   opacity: 1;
   pointer-events: all;
