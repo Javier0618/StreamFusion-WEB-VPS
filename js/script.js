@@ -10405,50 +10405,31 @@ function selectTvChannel(channel) {
       // HLS (m3u8, m3u, ts) o video directo
       if (typeof Hls !== "undefined" && Hls.isSupported()) {
         const hls = new Hls({
-          enableWorker:              true,
-          lowLatencyMode:            true,
-          backBufferLength:          30,
-          maxBufferLength:           20,
-          maxMaxBufferLength:        40,
-          fragLoadingMaxRetry:       8,
-          manifestLoadingMaxRetry:   6,
-          levelLoadingMaxRetry:      6,
-          fragLoadingRetryDelay:     1000,
-          manifestLoadingRetryDelay: 1000,
-          levelLoadingRetryDelay:    1000,
+          enableWorker:  true,
+          lowLatencyMode: false,
+          maxBufferLength: 30,
+          fragLoadingMaxRetry: 6,
+          manifestLoadingMaxRetry: 4,
+          levelLoadingMaxRetry: 4,
         });
 
         hls.loadSource(url);
         hls.attachMedia(video);
         hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
 
-        // ── Auto-recuperación ante errores ──
-        let mediaErrorRecoveries = 0;
+        // Recuperación ante errores fatales únicamente
+        let mediaRecoveries = 0;
         hls.on(Hls.Events.ERROR, function (event, data) {
-          if (!data.fatal) return; // Errores no fatales los maneja HLS.js solo
-
-          console.warn("[TV] HLS error fatal:", data.type, data.details);
+          if (!data.fatal) return;
 
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-            // Error de red → intentar reanudar
-            setTimeout(() => { try { hls.startLoad(); } catch(e){} }, 2000);
+            setTimeout(() => { try { hls.startLoad(); } catch(e){} }, 3000);
 
-          } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-            // Error de media → recuperar (máx 3 intentos)
-            if (mediaErrorRecoveries < 3) {
-              mediaErrorRecoveries++;
-              hls.recoverMediaError();
-            } else {
-              // Reload completo del stream
-              console.warn("[TV] Recargando stream tras múltiples errores...");
-              setTimeout(() => {
-                if (tvCurrentChannel) selectTvChannel(tvCurrentChannel);
-              }, 3000);
-            }
+          } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR && mediaRecoveries < 3) {
+            mediaRecoveries++;
+            hls.recoverMediaError();
 
           } else {
-            // Error irrecuperable → reload automático
-            console.warn("[TV] Error irrecuperable, recargando en 5s...");
             hls.destroy();
             window._tvHlsInstance = null;
             setTimeout(() => {
@@ -10456,6 +10437,8 @@ function selectTvChannel(channel) {
             }, 5000);
           }
         });
+
+        window._tvHlsInstance = hls;
 
         // ── Detectar video detenido (stall) ──
         let stallTimer = null;
@@ -10531,14 +10514,12 @@ function setupTvVideoOverlay(video, container) {
   const muteIcon = document.getElementById("tv-overlay-mute-icon");
   const fsBtn    = document.getElementById("tv-overlay-fs-btn");
 
-  // Mute
   muteBtn?.addEventListener("click", function (e) {
     e.stopPropagation();
     video.muted = !video.muted;
     if (muteIcon) muteIcon.className = video.muted ? "fas fa-volume-mute" : "fas fa-volume-up";
   });
 
-  // Fullscreen
   fsBtn?.addEventListener("click", function (e) {
     e.stopPropagation();
     const target = wrapper || container;
@@ -10557,20 +10538,32 @@ function setupTvVideoOverlay(video, container) {
     });
   }
 
-  // Eliminar click handler anterior si existe
+  // Eliminar click handler anterior
   if (container._tvClickHandler) {
     container.removeEventListener("click", container._tvClickHandler);
     delete container._tvClickHandler;
   }
 
-  // Toggle simple: clic en el video → mostrar/ocultar controles
+  // Toggle con variable booleana (evita conflictos con CSS)
+  let overlayVisible = false;
+
+  function setOverlay(show) {
+    overlayVisible = show;
+    if (!overlay) return;
+    overlay.style.opacity        = show ? "1" : "0";
+    overlay.style.pointerEvents  = show ? "all" : "none";
+  }
+
   function clickHandler(e) {
-    if (e.target.closest(".tv-overlay-btn")) return; // no interferir con botones
-    if (overlay) overlay.classList.toggle("visible");
+    if (e.target.closest(".tv-overlay-btn")) return;
+    setOverlay(!overlayVisible);
   }
 
   container._tvClickHandler = clickHandler;
   container.addEventListener("click", clickHandler);
+
+  // Empezar oculto
+  setOverlay(false);
 }
 
 function tvToggleFavorite(chId) {
