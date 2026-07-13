@@ -6216,8 +6216,15 @@ _This response is too long to display in full._
 
   /* 1. Posters con dimensión uniforme */
   #manage-content-grid {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0.3rem;
+  }
+
+  /* Evitar que el card expanda su columna */
+  #manage-content-grid .grid-card {
+    min-width: 0;
+    width: 100%;
+    overflow: hidden;
   }
 
   #manage-content-grid .grid-poster-wrapper {
