@@ -6221,17 +6221,20 @@ _This response is too long to display in full._
   }
 
   #manage-content-grid .grid-poster-wrapper {
-    overflow: hidden;           /* recorta el poster al aspect-ratio */
+    position: relative;
+    overflow: hidden;
     aspect-ratio: 2 / 3;
+    width: 100%;
     border-radius: var(--border-radius);
   }
 
   #manage-content-grid .grid-poster {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
-    display: block;
-    border-radius: 0;           /* el wrapper ya tiene el radius */
+    border-radius: 0;
   }
 
   /* 2. Botones al fondo del poster, uno al lado del otro */
