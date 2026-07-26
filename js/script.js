@@ -9841,6 +9841,17 @@ const swipeNavigation = {
     // No activar si se está usando una entrada de texto
     if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
 
+    // No activar si estamos en la sección de TV — tiene scroll/swipe propio
+    if (typeof currentView !== "undefined" && currentView === "tv") {
+      this.isTouchingCategory = true;
+      return;
+    }
+    const tvView = document.getElementById("tv-view");
+    if (tvView && tvView.classList.contains("active") && tvView.contains(e.target)) {
+      this.isTouchingCategory = true;
+      return;
+    }
+
     // No activar si el toque comienza en el menú inferior (bottom-nav)
     const bottomNav = document.querySelector(".bottom-nav");
     if (bottomNav && bottomNav.contains(e.target)) {
