@@ -6294,3 +6294,71 @@ _This response is too long to display in full._
     padding: 0.25rem 0.1rem;
   }
 }
+
+
+
+/* ================================================================
+   FIX — Pósters con columnas desiguales en móviles
+   ================================================================ */
+
+@media (max-width: 768px) {
+  /* Tres columnas exactamente iguales */
+  .content-grid-view {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+    min-width: 0;
+    gap: 0.35rem;
+  }
+
+  /* Evita que una tarjeta empuje o ensanche su columna */
+  .content-grid-view > .grid-card {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  /* Wrapper uniforme para todos los pósters */
+  .content-grid-view .grid-poster-wrapper {
+    position: relative;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    aspect-ratio: 2 / 3;
+    overflow: hidden;
+    border-radius: var(--border-radius);
+  }
+
+  /* La imagen llena exactamente el wrapper */
+  .content-grid-view .grid-poster {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    object-fit: cover;
+    border-radius: var(--border-radius);
+  }
+
+  /* Evita que títulos largos alteren el tamaño de las columnas */
+  .content-grid-view .grid-info,
+  .content-grid-view .grid-title {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .content-grid-view .grid-title {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+}
+
+
+@media (max-width: 992px)
+@media (max-width: 768px)
+@media (min-width: 1024px)
+@media (min-width: 1200px)
