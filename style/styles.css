@@ -6358,7 +6358,421 @@ _This response is too long to display in full._
 }
 
 
-@media (max-width: 992px)
-@media (max-width: 768px)
-@media (min-width: 1024px)
-@media (min-width: 1200px)
+
+/* ================================================================
+   MEJORA VISUAL · MÓVIL Y TABLET  (capa de ajustes al final del CSS)
+   Para revertir: borra todo desde este comentario hasta el final.
+   ================================================================ */
+
+/* ---------- 1. Tokens: paleta unificada (azul noche + naranja) ---------- */
+:root {
+  --dark-bg: #070f19;
+  --dark-bg-lighter: #101926;
+  --card-bg: #152030;
+  --border-color: #223047;
+  --text-secondary: #9aa7ba;
+  --border-radius: 12px;
+  --transition-speed: 0.25s;
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  --glass: rgba(9, 16, 27, 0.82);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --gutter: clamp(10px, 3vw, 28px);
+}
+
+/* ---------- 2. Base: lectura, toque y fluidez ---------- */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  line-height: 1.45;
+  min-height: 100dvh;
+  overscroll-behavior-y: none;
+}
+
+a, button, [role="button"], .content-card, .grid-card, .category-item {
+  touch-action: manipulation;
+}
+
+/* Los campos de texto deben poder editarse aunque el body bloquee selección */
+input, textarea, select {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+a:focus-visible, button:focus-visible, input:focus-visible,
+select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--secondary-color);
+  outline-offset: 2px;
+}
+
+/* ---------- 3. Header y navegación inferior (cristal) ---------- */
+@media (max-width: 1024px) {
+  header {
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    backdrop-filter: blur(16px) saturate(140%);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    padding-left: max(var(--gutter), env(safe-area-inset-left, 0px));
+    padding-right: max(var(--gutter), env(safe-area-inset-right, 0px));
+  }
+
+  .search-input.active {
+    width: min(52vw, 240px);
+  }
+
+  .main-container {
+    padding-left: max(var(--gutter), env(safe-area-inset-left, 0px));
+    padding-right: max(var(--gutter), env(safe-area-inset-right, 0px));
+  }
+}
+
+@media (max-width: 768px) {
+  body {
+    padding-bottom: calc(76px + var(--safe-bottom));
+  }
+
+  .bottom-nav {
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    backdrop-filter: blur(18px) saturate(140%);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 6px 8px calc(6px + var(--safe-bottom));
+    gap: 4px;
+  }
+
+  .bottom-nav-item {
+    flex: 1;
+    max-width: 96px;
+    min-height: 52px;
+    justify-content: center;
+    border-radius: 14px;
+    transition: color var(--transition-speed), background-color var(--transition-speed);
+  }
+
+  .bottom-nav-item i {
+    margin-bottom: 3px;
+  }
+
+  .bottom-nav-item.active {
+    background: rgba(255, 107, 0, 0.14);
+    color: var(--secondary-color);
+  }
+
+  /* Botones flotantes por encima de la barra inferior y del área segura */
+  .back-to-top {
+    width: 40px;
+    height: 40px;
+    bottom: calc(5.25rem + var(--safe-bottom));
+    right: 0.75rem;
+  }
+
+  .floating-donation-btn,
+  #custom-floating-buttons {
+    bottom: calc(5.25rem + var(--safe-bottom));
+  }
+}
+
+/* ---------- 4. Hero ---------- */
+.hero-slide::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(7, 15, 25, 0.92) 0%, rgba(7, 15, 25, 0.35) 45%, transparent 70%);
+  pointer-events: none;
+}
+
+.hero-dot {
+  width: 8px;
+  height: 8px;
+  transition: width var(--transition-speed) var(--ease-out), background-color var(--transition-speed);
+}
+
+.hero-dot.active {
+  width: 22px;
+  border-radius: 999px;
+  transform: none;
+  background-color: var(--secondary-color);
+}
+
+.hero-nav {
+  bottom: 10px;
+}
+
+.btn {
+  border-radius: 10px;
+  min-height: 44px;
+  justify-content: center;
+}
+
+.btn-primary {
+  background-color: var(--secondary-color);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background-color: var(--accent-color);
+}
+
+@media (max-width: 768px) {
+  .hero {
+    margin-left: var(--gutter);
+    margin-right: var(--gutter);
+    border-radius: 18px;
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
+  }
+
+  /* El texto queda por encima del degradado */
+  .hero-content {
+    position: relative;
+    z-index: 1;
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+  .hero-title {
+    font-size: clamp(1.8rem, 4.6vw, 2.6rem);
+    width: 65%;
+  }
+
+  .hero-description {
+    font-size: clamp(0.9rem, 1.8vw, 1.05rem);
+    line-height: 1.5;
+    width: 65%;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
+
+/* ---------- 5. Títulos, carruseles y tarjetas ---------- */
+.section-title {
+  font-size: clamp(1.05rem, 2.6vw, 1.3rem);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  margin: 1.1rem 0 0.65rem;
+  padding-left: 0.65rem;
+  border-left-width: 3px;
+  border-radius: 2px;
+}
+
+@media (max-width: 1024px) {
+  .slider-container {
+    scroll-snap-type: x proximity;
+    overscroll-behavior-x: contain;
+    padding-left: 0.2rem;
+    padding-right: 0.5rem;
+  }
+
+  /* Tarjetas fluidas: ~3 en móvil con asomo de la siguiente, ~4 en tablet */
+  .content-card {
+    flex: 0 0 clamp(112px, 30vw, 190px);
+    margin: 0 0.25rem;
+    scroll-snap-align: start;
+  }
+
+  .card-title-bottom h3 {
+    font-size: clamp(0.78rem, 2vw, 0.9rem);
+  }
+}
+
+.card-poster-wrapper,
+.grid-poster-wrapper {
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+}
+
+.card-rating, .card-badge, .grid-rating, .grid-badge,
+.card-quality-badge, .card-language-badge {
+  border-radius: 6px;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+/* Cuadrículas de pósters: columnas automáticas según el ancho real */
+.content-grid-view,
+.stats-grid-view {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(clamp(104px, 22vw, 160px), 1fr));
+  gap: clamp(0.4rem, 1.4vw, 0.9rem);
+}
+
+.grid-title {
+  font-size: clamp(0.78rem, 1.9vw, 0.9rem);
+}
+
+/* ---------- 6. Categorías en círculos ---------- */
+.categories-container {
+  gap: clamp(4px, 1.5vw, 12px);
+  scroll-snap-type: x proximity;
+  padding-bottom: 6px;
+}
+
+.category-item {
+  width: clamp(72px, 18vw, 96px);
+  scroll-snap-align: start;
+}
+
+.category-icon-wrapper {
+  width: clamp(56px, 14vw, 76px);
+  height: clamp(56px, 14vw, 76px);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* ---------- 7. Pestañas desplazables y formularios ---------- */
+.admin-tabs, .profile-tabs {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.admin-tabs::-webkit-scrollbar, .profile-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.admin-tab, .profile-tab {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+.auth-form-container {
+  max-height: 92dvh;
+  overflow-y: auto;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.form-input {
+  min-height: 52px;
+  border-radius: 12px;
+  transition: background-color var(--transition-speed), box-shadow var(--transition-speed);
+}
+
+.form-input:focus {
+  box-shadow: 0 0 0 2px rgba(255, 107, 0, 0.55);
+}
+
+.auth-btn {
+  min-height: 52px;
+  border-radius: 12px;
+}
+
+.auth-btn:hover {
+  background-color: var(--accent-color);
+}
+
+/* iOS hace zoom si el campo tiene menos de 16px */
+@media (max-width: 1024px) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/* ---------- 8. Modales como hoja inferior en móvil ---------- */
+@keyframes sheetUp {
+  from { transform: translateY(40px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+@media (max-width: 600px) {
+  .modal-overlay {
+    align-items: flex-end;
+  }
+
+  .modal-overlay .modal-container {
+    width: 100%;
+    max-width: none;
+    height: auto;
+    max-height: 88dvh;
+    border-radius: 20px 20px 0 0;
+    padding-bottom: var(--safe-bottom);
+    animation: sheetUp 0.3s var(--ease-out);
+  }
+}
+
+/* ---------- 9. Ficha de detalle ---------- */
+.detail-title {
+  font-size: clamp(1.3rem, 4.5vw, 1.9rem);
+}
+
+.detail-description {
+  line-height: 1.6;
+}
+
+.detail-view-new {
+  min-height: 100dvh;
+}
+
+.season-tab {
+  border-radius: 999px;
+  min-height: 40px;
+}
+
+.episode-btn {
+  min-width: 48px;
+  height: 48px;
+  border-radius: 10px;
+}
+
+/* ---------- 10. TV en vivo: áreas de toque ---------- */
+.tv-channel-item {
+  min-height: 64px;
+}
+
+.tv-ctrl-btn {
+  width: 40px;
+  height: 40px;
+}
+
+.tv-tab {
+  min-height: 48px;
+}
+
+/* ---------- 11. Pantallas táctiles: sin hover pegajoso, con feedback al tocar ---------- */
+@media (hover: none) {
+  .content-card:hover,
+  .admin-quick-card:hover,
+  .management-quick-card:hover,
+  .quick-action-card:hover,
+  .admin-stat-card:hover,
+  .category-item:hover,
+  .btn:hover,
+  .backdrop-card:hover,
+  .related-card-new:hover {
+    transform: none;
+  }
+
+  .category-item:hover .category-icon-wrapper {
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
+  }
+
+  .content-card:active,
+  .grid-card:active,
+  .backdrop-card:active,
+  .category-item:active,
+  .btn:active,
+  .admin-quick-card:active,
+  .management-quick-card:active,
+  .quick-action-card:active {
+    transform: scale(0.97);
+    transition: transform 0.12s var(--ease-out);
+  }
+}
+
+/* ---------- 12. Accesibilidad: respetar "reducir movimiento" ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
