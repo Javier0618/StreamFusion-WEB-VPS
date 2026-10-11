@@ -7371,6 +7371,7 @@ async function renderModalContent(data, type) {
 
   const videoData = firestoreData.video_url || null;
   const seasonData = firestoreData.seasons || null;
+  sfSetSeasons(data.id, seasonData);
 
   if (type === "movie") {
     if (videoData) {
@@ -11120,6 +11121,9 @@ const SF_PROGRESS_KEY = "sf_progress_v1";
 const SF_PROGRESS_MAX = 100;
 const SF_WATCH_SECONDS = 60; // segundos vistos para considerar el episodio "visto"
 const SF_WATCH_RATIO = 0.9; // o este porcentaje del video
+// ---- Aviso "Siguiente episodio" (lo dibuja el reproductor, también en pantalla completa) ----
+const SF_NEXT_BEFORE_END = 50; // aparece cuando faltan estos segundos (0 = sin aviso: solo al terminar)
+const SF_NEXT_COUNTDOWN = 10;  // segundos de cuenta regresiva antes de cambiar de episodio
 const SF_SEND_SEEK = false; // false = el propio reproductor reanuda el minuto ("Volver a: hh:mm:ss")
 
 const sfCurrent = { id: null, type: null, season: null, episode: null };
@@ -11354,6 +11358,45 @@ function sfPlayNext() {
   }
 }
 
+// ---------- ¿Hay episodio siguiente? (según los datos, no según la pantalla) ----------
+let sfSeasonsInfo = { id: null, data: null };
+
+function sfSetSeasons(id, seasons) {
+  sfSeasonsInfo = { id: String(id), data: seasons || null };
+}
+
+function sfHasNext() {
+  if (sfCurrent.type !== "tv" || !sfCurrent.id || !sfCurrent.episode) return false;
+  if (sfSeasonsInfo.id !== sfCurrent.id || !sfSeasonsInfo.data) return false;
+  const seasons = Object.values(sfSeasonsInfo.data);
+  const cur = seasons.find((s) => Number(s.season_number) === sfCurrent.season);
+  if (
+    cur &&
+    getValidEpisodes(cur.episodes).some((ep) => ep.episode_number > sfCurrent.episode)
+  )
+    return true;
+  return seasons.some(
+    (s) =>
+      Number(s.season_number) > sfCurrent.season &&
+      getValidEpisodes(s.episodes).length > 0,
+  );
+}
+
+function sfSendConfig(iframe) {
+  try {
+    const origin = new URL(iframe.src).origin;
+    iframe.contentWindow.postMessage(
+      {
+        sf: "config",
+        hasNext: sfHasNext(),
+        showBeforeEnd: SF_NEXT_BEFORE_END,
+        countdown: SF_NEXT_COUNTDOWN,
+      },
+      origin,
+    );
+  } catch {}
+}
+
 // ---------- Mensajes del reproductor embed ----------
 function sfApplyPendingSeek(iframe) {
   const p = sfPendingSeek;
@@ -11384,8 +11427,17 @@ window.addEventListener("message", (ev) => {
   const hasDur = Number.isFinite(dur) && dur > 0;
   const isTv = sfCurrent.type === "tv";
 
+  if (d.event === "ready") sfSendConfig(iframe);
+
   if (d.event === "ready" || (d.event === "timeupdate" && hasTime && t < 5)) {
     sfApplyPendingSeek(iframe);
+  }
+
+  // El aviso del reproductor terminó su cuenta regresiva (o pulsaron "Ver ahora")
+  if (d.event === "next" && isTv) {
+    sfMarkWatched(sfCurrent.id, sfCurrent.season, sfCurrent.episode);
+    sfPlayNext();
+    return;
   }
 
   // Si el usuario estaba en pantalla completa, intentar volver a ella (puede
