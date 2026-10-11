@@ -7004,3 +7004,310 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
     display: none;
   }
 }
+
+/* ================================================================
+   MEJORA VISUAL · FICHA DE PELÍCULA / SERIE (.detail-view-new)
+   Para revertir: borra desde este comentario hasta el final.
+   ================================================================ */
+
+/* ---------- Reproductor ---------- */
+.video-container-new {
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+}
+
+.video-placeholder i {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 76px;
+  height: 76px;
+  font-size: 1.9rem;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 50%;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+.video-placeholder i:hover {
+  background: var(--secondary-color);
+  border-color: var(--secondary-color);
+  color: #fff;
+}
+
+/* Móvil horizontal: un reproductor fijo ocuparía toda la pantalla */
+@media (max-width: 768px) and (orientation: landscape) {
+  .video-container-new {
+    position: relative;
+    top: auto;
+  }
+}
+
+/* ---------- Contenido ---------- */
+.detail-content-new {
+  background: var(--dark-bg);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-left: max(1rem, env(safe-area-inset-left, 0px));
+  padding-right: max(1rem, env(safe-area-inset-right, 0px));
+  padding-bottom: calc(2rem + var(--safe-bottom));
+}
+
+.detail-title-row {
+  align-items: center;
+}
+
+.detail-title,
+.mobile-info-header .detail-title {
+  font-size: clamp(1.35rem, 4.8vw, 2rem);
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+}
+
+.save-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  transition: background-color var(--transition-speed), color var(--transition-speed), transform 0.12s var(--ease-out);
+}
+
+.save-btn:active {
+  transform: scale(0.9);
+}
+
+.save-btn.saved {
+  background: rgba(255, 107, 0, 0.18);
+}
+
+/* ---------- Datos: valoración, año, duración, género ---------- */
+.detail-meta-row,
+.mobile-info-header .detail-meta-row {
+  gap: 0.5rem;
+  font-size: 0.82rem;
+}
+
+.detail-rating,
+.detail-year,
+.detail-runtime {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  line-height: 1.3;
+}
+
+.detail-rating {
+  background: rgba(255, 180, 0, 0.14);
+}
+
+.detail-genres {
+  font-size: 0.85rem;
+}
+
+.detail-status-row .detail-status,
+.detail-status {
+  font-weight: 600;
+}
+
+/* ---------- Temporadas y episodios (móvil/tablet vertical) ---------- */
+.seasons-tabs-container,
+.episodes-carousel-container {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+}
+
+.seasons-tabs-container::-webkit-scrollbar,
+.episodes-carousel-container::-webkit-scrollbar {
+  display: none;
+}
+
+.seasons-tabs,
+.episodes-carousel {
+  padding-right: 28px;
+}
+
+.season-tab {
+  scroll-snap-align: start;
+  min-height: 40px;
+  padding: 0.45rem 1.1rem;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.05);
+  border-color: transparent;
+  transition: background-color var(--transition-speed), color var(--transition-speed), transform 0.12s var(--ease-out);
+}
+
+.season-tab.active {
+  box-shadow: 0 4px 14px rgba(255, 107, 0, 0.35);
+}
+
+.season-tab:active,
+.episode-btn:active {
+  transform: scale(0.94);
+}
+
+.episode-btn {
+  min-width: 52px;
+  height: 52px;
+  font-weight: 700;
+  border-color: transparent;
+  background: var(--card-bg);
+  scroll-snap-align: start;
+  transition: background-color var(--transition-speed), color var(--transition-speed), transform 0.12s var(--ease-out);
+}
+
+.episode-btn.active {
+  box-shadow: 0 4px 14px rgba(255, 107, 0, 0.35);
+}
+
+/* ---------- Sinopsis, equipo y reparto ---------- */
+.detail-description {
+  font-size: 0.95rem;
+  line-height: 1.65;
+  color: #b4bfce;
+  max-width: 70ch;
+}
+
+.detail-crew {
+  line-height: 1.5;
+}
+
+.cast-list {
+  gap: 0.9rem;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+}
+
+.cast-list::-webkit-scrollbar {
+  display: none;
+}
+
+.cast-item {
+  min-width: 72px;
+  scroll-snap-align: start;
+}
+
+.cast-image {
+  width: 58px;
+  height: 58px;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+.cast-name {
+  max-width: 72px;
+  font-size: 0.72rem;
+}
+
+/* ---------- Relacionados ---------- */
+.related-section-new {
+  border-top-color: rgba(255, 255, 255, 0.07);
+}
+
+.related-section-new h3 {
+  font-size: clamp(1.05rem, 2.6vw, 1.3rem);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.related-grid-new {
+  grid-template-columns: repeat(auto-fill, minmax(clamp(96px, 26vw, 160px), 1fr));
+  gap: clamp(0.5rem, 1.6vw, 1rem);
+}
+
+.related-poster-wrapper {
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+}
+
+.related-card-title {
+  font-size: clamp(0.74rem, 1.8vw, 0.86rem);
+}
+
+/* ---------- Tablet y escritorio: póster + información + panel de episodios ---------- */
+@media (min-width: 769px) {
+  .desktop-poster-info-section {
+    gap: clamp(1rem, 3vw, 2rem);
+    padding: clamp(1rem, 3vw, 2rem);
+  }
+
+  .desktop-poster {
+    flex: 0 0 clamp(140px, 22vw, 220px);
+    max-width: clamp(140px, 22vw, 220px);
+  }
+
+  .desktop-poster img {
+    border-radius: 14px;
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.5);
+  }
+
+  .desktop-info .detail-title {
+    font-size: clamp(1.6rem, 3.4vw, 2.2rem);
+  }
+
+  .genre-tag {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .detail-view-series .desktop-seasons-panel {
+    border-left: 1px solid var(--border-color);
+    overscroll-behavior: contain;
+  }
+
+  .season-tab-desktop {
+    min-width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    border-color: transparent;
+  }
+
+  .episodes-list-desktop {
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: #3a4a63 transparent;
+  }
+
+  .episode-item-desktop {
+    padding: 0.55rem;
+    border-left: 3px solid transparent;
+  }
+
+  .episode-item-desktop.active {
+    background: rgba(255, 107, 0, 0.12);
+    border-left-color: var(--secondary-color);
+  }
+
+  .episode-title-desktop {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+}
+
+/* Tablet: miniaturas de episodio más compactas para que quepa el título */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .episode-thumbnail {
+    width: 104px;
+    min-width: 104px;
+  }
+
+  .desktop-info .cast-list {
+    gap: 0.75rem;
+  }
+}
+
+@media (hover: none) {
+  .related-card-new:active,
+  .episode-item-desktop:active {
+    transform: scale(0.97);
+    transition: transform 0.12s var(--ease-out);
+  }
+}
