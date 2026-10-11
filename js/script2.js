@@ -11122,7 +11122,7 @@ const SF_PROGRESS_MAX = 100;
 const SF_WATCH_SECONDS = 60; // segundos vistos para considerar el episodio "visto"
 const SF_WATCH_RATIO = 0.9; // o este porcentaje del video
 // ---- Aviso "Siguiente episodio" (lo dibuja el reproductor, también en pantalla completa) ----
-const SF_NEXT_BEFORE_END = 50; // aparece cuando faltan estos segundos (0 = sin aviso: solo al terminar)
+const SF_NEXT_BEFORE_END = 60; // aparece cuando faltan estos segundos (0 = sin aviso: solo al terminar)
 const SF_NEXT_COUNTDOWN = 10;  // segundos de cuenta regresiva antes de cambiar de episodio
 const SF_SEND_SEEK = false; // false = el propio reproductor reanuda el minuto ("Volver a: hh:mm:ss")
 
