@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
+
 #navbar-iframe {
   display: none;
 }
@@ -6362,3 +6364,137 @@ _This response is too long to display in full._
 @media (max-width: 768px)
 @media (min-width: 1024px)
 @media (min-width: 1200px)
+
+
+/* ==========================================================
+   StreamFusion – capa visual oscura (va al final del archivo)
+   ========================================================== */
+:root {
+  --dark-bg: #0a0a0a;            /* fondo sólido, sin transparencia */
+  --dark-bg-lighter: #141414;
+  --card-bg: #141414;
+  --sf-surface: #141414;
+  --sf-glass: rgba(14, 14, 14, 0.9);
+  --sf-hairline: rgba(255, 255, 255, 0.08);
+  --sf-accent: linear-gradient(135deg, #ff7a14 0%, #ff5500 100%);
+  --sf-radius-card: 12px;
+  --sf-pill: 999px;
+  --sf-ease: cubic-bezier(0.22, 0.8, 0.28, 1);
+}
+
+html { background: #0a0a0a; }
+body {
+  background: #0a0a0a;
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1.3;
+  padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+}
+.page-view, .main-container { background: transparent; }
+
+/* ---------- Header ---------- */
+header#header {
+  background: linear-gradient(to bottom, rgba(10, 10, 10, 0.95), rgba(10, 10, 10, 0.6));
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--sf-hairline);
+}
+.nav-link { font-size: 1rem; opacity: 0.75; }
+.nav-link:hover, .nav-link.active { opacity: 1; color: #fff; }
+.nav-link.active::after { height: 3px; bottom: -8px; border-radius: var(--sf-pill); background: var(--sf-accent); }
+.search-input { background: rgba(255, 255, 255, 0.08); border: 1px solid var(--sf-hairline); }
+
+/* ---------- Hero (proporción más contenida) ---------- */
+.hero { height: clamp(300px, 56vh, 520px); }
+.hero-slide { background-position: center 15%; }
+.hero-slide::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background:
+    linear-gradient(to top, #0a0a0a 0%, rgba(10, 10, 10, 0.75) 22%, rgba(10, 10, 10, 0) 55%),
+    linear-gradient(to right, rgba(10, 10, 10, 0.5), transparent 50%);
+}
+.hero-title { letter-spacing: -0.02em; }
+.hero-buttons { gap: 10px; bottom: 30px; justify-content: center; }
+.btn { border-radius: var(--sf-pill); padding: 11px 24px; font-weight: 600; transition: transform 0.25s var(--sf-ease), box-shadow 0.25s, background 0.25s; }
+.btn-primary { background: var(--sf-accent); color: #fff; box-shadow: 0 6px 18px rgba(255, 85, 0, 0.3); }
+.btn-primary:hover { background: var(--sf-accent); }
+.btn-secondary { background: rgba(255, 255, 255, 0.12); border: 1px solid var(--sf-hairline); }
+.btn:active { transform: scale(0.97); }
+.hero-nav { bottom: 10px; }
+.hero-dot { width: 6px; height: 6px; background: rgba(255, 255, 255, 0.35); transition: width 0.3s var(--sf-ease), background 0.3s; }
+.hero-dot.active { width: 20px; border-radius: var(--sf-pill); background: #ff6b00; transform: none; }
+
+/* ---------- Barra de plataformas ---------- */
+.main-container { margin-top: 0; }
+.services-container {
+  top: 0;
+  margin: 0 0 1.25rem;
+  padding: 0.6rem 0.9rem;
+  background: var(--sf-surface);
+  border: 1px solid var(--sf-hairline);
+  border-radius: 16px;
+  box-shadow: none;
+}
+
+/* ---------- Secciones ---------- */
+.categories-section { margin-top: 0.5rem; margin-bottom: 1rem; }
+.content-row { margin-bottom: 1.1rem; }
+.section-title {
+  font-size: 1.05rem; font-weight: 700; letter-spacing: -0.01em; color: #fff;
+  border-left: 0; padding-left: 0; margin: 0.9rem 0 0.5rem;
+}
+.see-all {
+  font-size: 0.75rem; font-weight: 600; color: #ddd;
+  padding: 5px 11px; border-radius: var(--sf-pill);
+  background: rgba(255, 255, 255, 0.07); border: 1px solid var(--sf-hairline);
+}
+.see-all:hover { color: #fff; background: rgba(255, 107, 0, 0.22); }
+.category-icon-wrapper { background: var(--sf-surface); border: 1px solid var(--sf-hairline); }
+.category-name { color: #b5b5b5; }
+
+/* ---------- Tarjetas ---------- */
+.content-card { margin: 0 0.25rem; }
+.card-poster-wrapper {
+  border-radius: var(--sf-radius-card);
+  background: var(--sf-surface);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5), inset 0 0 0 1px var(--sf-hairline);
+  transition: transform 0.3s var(--sf-ease), box-shadow 0.3s var(--sf-ease);
+}
+.card-title-bottom h3 { font-size: 0.8rem; font-weight: 600; opacity: 0.9; }
+@media (hover: hover) {
+  .content-card:hover .card-poster-wrapper {
+    transform: translateY(-3px) scale(1.02);
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 107, 0, 0.5);
+  }
+}
+.content-card:active .card-poster-wrapper { transform: scale(0.97); }
+
+/* ---------- Barra inferior (compacta y sobria) ---------- */
+.bottom-nav {
+  left: 10px; right: 10px; width: auto;
+  bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  padding: 6px 4px;
+  background: var(--sf-glass);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  border: 1px solid var(--sf-hairline);
+  border-radius: 20px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+}
+.bottom-nav-item { flex: 1; padding: 6px 2px; border-radius: 14px; font-size: 0.68rem; transition: color 0.25s, background 0.25s; }
+.bottom-nav-item i { font-size: 1.15rem; margin-bottom: 3px; }
+.bottom-nav-item.active { color: #fff; background: rgba(255, 255, 255, 0.09); }
+.bottom-nav-item.active i { color: #ff7a14; }
+
+/* ---------- Botones flotantes (más pequeños, sobre la barra) ---------- */
+#custom-floating-buttons { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); left: 0.75rem; gap: 0.4rem; }
+.custom-fab {
+  width: 40px; height: 40px; font-size: 1rem;
+  background: rgba(20, 20, 20, 0.92);
+  border: 1px solid rgba(255, 107, 0, 0.7);
+}
+.back-to-top { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+
+/* ---------- Detalles ---------- */
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.18); }
+:focus-visible { outline: 2px solid #ff7a14; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}
