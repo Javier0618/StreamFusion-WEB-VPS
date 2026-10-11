@@ -6644,8 +6644,7 @@ function renderFirestoreSeriesAccordion(seasons) {
     .filter(
       (season) =>
         season.season_number > 0 &&
-        season.episodes &&
-        Object.keys(season.episodes).length > 0,
+        getValidEpisodes(season.episodes).length > 0,
     )
     .sort((a, b) => a.season_number - b.season_number);
 
@@ -6681,14 +6680,23 @@ function renderFirestoreSeriesAccordion(seasons) {
   attachAccordionEventListeners(sortedSeasons);
 }
 
-function renderFirestoreEpisodes(episodes) {
-  if (!episodes || Object.keys(episodes).length === 0) {
-    return `<p class="empty-text" style="font-size: 0.9rem; padding: 10px;">${getText("details.noEpisodes")}</p>`;
-  }
-
-  const sortedEpisodes = Object.values(episodes)
-    .filter((ep) => ep.video_url) // Filtrar episodios que tienen video_url
+// Devuelve solo episodios con enlace válido y número válido, ordenados
+function getValidEpisodes(episodes) {
+  if (!episodes) return [];
+  return Object.entries(episodes)
+    .map(([key, ep]) => {
+      if (!ep || typeof ep !== "object") return null;
+      const num = Number(ep.episode_number ?? key);
+      const url = typeof ep.video_url === "string" ? ep.video_url.trim() : "";
+      if (!Number.isInteger(num) || num <= 0 || !url) return null;
+      return { ...ep, episode_number: num, video_url: url };
+    })
+    .filter(Boolean)
     .sort((a, b) => a.episode_number - b.episode_number);
+}
+
+function renderFirestoreEpisodes(episodes) {
+  const sortedEpisodes = getValidEpisodes(episodes);
 
   if (sortedEpisodes.length === 0) {
     return `<p class="empty-text" style="font-size: 0.9rem; padding: 10px;">${getText("details.noEpisodes")}</p>`;
@@ -6952,18 +6960,13 @@ async function renderModalContent(data, type) {
     if (seasonData && Object.keys(seasonData).length > 0) {
       const sortedSeasons = Object.values(seasonData)
         .filter(
-          (s) =>
-            s.season_number > 0 &&
-            s.episodes &&
-            Object.values(s.episodes).some((ep) => ep.video_url),
+          (s) => s.season_number > 0 && getValidEpisodes(s.episodes).length > 0,
         )
         .sort((a, b) => a.season_number - b.season_number);
 
       if (sortedSeasons.length > 0) {
         const lastSeason = sortedSeasons[sortedSeasons.length - 1];
-        const lastSeasonEpisodes = Object.values(lastSeason.episodes || {})
-          .filter((ep) => ep.video_url)
-          .sort((a, b) => a.episode_number - b.episode_number);
+        const lastSeasonEpisodes = getValidEpisodes(lastSeason.episodes);
         if (lastSeasonEpisodes.length > 0) {
           const lastEpisode = lastSeasonEpisodes[lastSeasonEpisodes.length - 1];
           updatedUntilText = `Actualizado hasta T${lastSeason.season_number}-E${lastEpisode.episode_number}`;
@@ -7005,7 +7008,7 @@ async function renderModalContent(data, type) {
                           )
                           .join("")}
                     </div>
-                    <div class="episodes-count">Episodios (${Object.values(sortedSeasons[0]?.episodes || {}).filter((ep) => ep.video_url).length})</div>
+                    <div class="episodes-count">Episodios (${getValidEpisodes(sortedSeasons[0]?.episodes).length})</div>
                     <div class="episodes-list-desktop" id="episodes-list-desktop">
                         ${renderEpisodesDesktop(sortedSeasons[0]?.episodes || {})}
                     </div>
@@ -7384,22 +7387,12 @@ async function renderModalContent(data, type) {
       const sortedSeasons = Object.values(seasonData).sort(
         (a, b) => a.season_number - b.season_number,
       );
-      let firstSeasonWithEpisodes =
-        sortedSeasons.find(
-          (s) =>
-            s.season_number > 0 &&
-            s.episodes &&
-            Object.keys(s.episodes).length > 0,
-        ) ||
-        sortedSeasons.find(
-          (s) => s.episodes && Object.keys(s.episodes).length > 0,
-        );
-      if (firstSeasonWithEpisodes) {
-        const sortedEpisodes = Object.values(
-          firstSeasonWithEpisodes.episodes,
-        ).sort((a, b) => a.episode_number - b.episode_number);
-        if (sortedEpisodes.length > 0 && sortedEpisodes[0].video_url) {
-          firstEpisodeUrl = sortedEpisodes[0].video_url;
+      for (const s of sortedSeasons) {
+        if (s.season_number <= 0) continue;
+        const valid = getValidEpisodes(s.episodes);
+        if (valid.length > 0) {
+          firstEpisodeUrl = valid[0].video_url;
+          break;
         }
       }
     }
@@ -7416,13 +7409,7 @@ async function renderModalContent(data, type) {
 }
 
 function renderEpisodesCarousel(episodes) {
-  if (!episodes || Object.keys(episodes).length === 0) {
-    return `<p class="no-episodes">${getText("details.noEpisodes")}</p>`;
-  }
-
-  const sortedEpisodes = Object.values(episodes)
-    .filter((ep) => ep.video_url)
-    .sort((a, b) => a.episode_number - b.episode_number);
+  const sortedEpisodes = getValidEpisodes(episodes);
 
   if (sortedEpisodes.length === 0) {
     return `<p class="no-episodes">${getText("details.noEpisodes")}</p>`;
@@ -7454,13 +7441,7 @@ function attachEpisodeClickListeners(container) {
 }
 
 function renderEpisodesDesktop(episodes) {
-  if (!episodes || Object.keys(episodes).length === 0) {
-    return `<p class="no-episodes">${getText("details.noEpisodes")}</p>`;
-  }
-
-  const sortedEpisodes = Object.values(episodes)
-    .filter((ep) => ep.video_url)
-    .sort((a, b) => a.episode_number - b.episode_number);
+  const sortedEpisodes = getValidEpisodes(episodes);
 
   if (sortedEpisodes.length === 0) {
     return `<p class="no-episodes">${getText("details.noEpisodes")}</p>`;
@@ -7494,9 +7475,7 @@ function attachDesktopEpisodeListeners(container, seasonData) {
         const episodesList = container.querySelector("#episodes-list-desktop");
         const episodesCount = container.querySelector(".episodes-count");
         const episodes = seasonData[seasonNum].episodes || {};
-        const count = Object.values(episodes).filter(
-          (ep) => ep.video_url,
-        ).length;
+        const count = getValidEpisodes(episodes).length;
 
         episodesCount.textContent = `Episodios (${count})`;
         episodesList.innerHTML = renderEpisodesDesktop(episodes);
