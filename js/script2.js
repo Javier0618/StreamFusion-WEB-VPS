@@ -11145,6 +11145,7 @@ function sfSetCurrent(id, type, season = null, episode = null) {
   sfCurrent.type = type;
   sfCurrent.season = season;
   sfCurrent.episode = episode;
+  sfScheduleChecks();
 }
 
 function sfMarkWatched(id, season, episode) {
@@ -11198,9 +11199,15 @@ function sfApplyChecks() {
       10,
     );
     if (!season) return;
+    const isCurrentSeason =
+      sfCurrent.type === "tv" &&
+      sfCurrent.id === String(id) &&
+      sfCurrent.season === season &&
+      sfCurrent.episode;
     modal.querySelectorAll(selector).forEach((el) => {
       const ep = parseInt(el.dataset.episode, 10);
       el.classList.toggle("watched", watched.has(`${season}-${ep}`));
+      if (isCurrentSeason) el.classList.toggle("active", ep === sfCurrent.episode);
     });
   };
   apply(".episode-btn", ".season-tab.active");
@@ -11284,30 +11291,60 @@ function sfPrepareMovie(id) {
       : null;
 }
 
+// ---------- Alinear la lista visible con el episodio real ----------
+// En horizontal (>= 769px) el CSS muestra la lista de "escritorio", que tiene su
+// propio marcador "activo". Aquí se asegura que la temporada visible sea la actual.
+function sfAlignVisibleSeason() {
+  if (sfCurrent.type !== "tv" || !sfCurrent.id) return null;
+  const modal = document.getElementById("movie-details-modal-container");
+  if (!modal) return null;
+  const visible = (el) => el.offsetParent !== null;
+  const tab = [...modal.querySelectorAll(".season-tab, .season-tab-desktop")]
+    .filter(visible)
+    .find((t) => parseInt(t.dataset.season, 10) === sfCurrent.season);
+  if (tab && !tab.classList.contains("active")) tab.click();
+  sfScheduleChecks();
+  return tab || null;
+}
+
+let sfResizeTimer = null;
+window.addEventListener("resize", () => {
+  clearTimeout(sfResizeTimer);
+  sfResizeTimer = setTimeout(sfAlignVisibleSeason, 250);
+});
+
 // ---------- Siguiente episodio ----------
+let sfReenterFs = false;
+
 function sfPlayNext() {
+  if (sfCurrent.type !== "tv" || !sfCurrent.id || !sfCurrent.episode) return;
   const modal = document.getElementById("movie-details-modal-container");
   if (!modal) return;
   const visible = (el) => el.offsetParent !== null;
 
-  const active = [
-    ...modal.querySelectorAll(".episode-btn.active, .episode-item-desktop.active"),
-  ].find(visible);
-  if (!active) return;
+  // Se usa el episodio que se está reproduciendo (sfCurrent), NO la clase "active"
+  const curTab = sfAlignVisibleSeason();
+  const eps = [
+    ...modal.querySelectorAll(".episode-btn, .episode-item-desktop"),
+  ].filter(visible);
+  const idx = eps.findIndex(
+    (b) => parseInt(b.dataset.episode, 10) === sfCurrent.episode,
+  );
+  const next = idx >= 0 ? eps[idx + 1] : null;
 
-  const next = active.nextElementSibling;
   if (next) {
+    sfReenterFs = !!document.fullscreenElement;
+    if (sfReenterFs) setTimeout(() => { sfReenterFs = false; }, 15000);
     next.click();
     next.scrollIntoView?.({ block: "nearest", inline: "center" });
     return;
   }
 
   // Era el último de la temporada: pasar a la siguiente (si existe)
-  const tab = [
-    ...modal.querySelectorAll(".season-tab.active, .season-tab-desktop.active"),
-  ].find(visible);
-  const nextTab = tab?.nextElementSibling;
+  const nextTab = curTab?.nextElementSibling;
   if (nextTab) {
+    sfReenterFs = !!document.fullscreenElement;
+    if (sfReenterFs) setTimeout(() => { sfReenterFs = false; }, 15000);
     nextTab.click();
     setTimeout(() => {
       [...modal.querySelectorAll(".episode-btn, .episode-item-desktop")]
@@ -11349,6 +11386,16 @@ window.addEventListener("message", (ev) => {
 
   if (d.event === "ready" || (d.event === "timeupdate" && hasTime && t < 5)) {
     sfApplyPendingSeek(iframe);
+  }
+
+  // Si el usuario estaba en pantalla completa, intentar volver a ella (puede
+  // ser bloqueado por el sistema si no hubo un toque del usuario)
+  if (d.event === "ready" && sfReenterFs) {
+    sfReenterFs = false;
+    try {
+      const r = iframe.requestFullscreen?.();
+      if (r && r.catch) r.catch(() => {});
+    } catch {}
   }
 
   if (d.event === "timeupdate" && hasTime) {
