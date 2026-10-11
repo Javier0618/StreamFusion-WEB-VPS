@@ -11120,7 +11120,7 @@ const SF_PROGRESS_KEY = "sf_progress_v1";
 const SF_PROGRESS_MAX = 100;
 const SF_WATCH_SECONDS = 60; // segundos vistos para considerar el episodio "visto"
 const SF_WATCH_RATIO = 0.9; // o este porcentaje del video
-const SF_SEND_SEEK = true; // false = dejar que el propio reproductor reanude el minuto
+const SF_SEND_SEEK = false; // false = el propio reproductor reanuda el minuto ("Volver a: hh:mm:ss")
 
 const sfCurrent = { id: null, type: null, season: null, episode: null };
 let sfPendingSeek = null;
