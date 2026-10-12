@@ -7396,3 +7396,44 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* ================================================================
+   EP-IMPORT: barra "Importar tiempos automáticos" (panel de admin)
+   ================================================================ */
+.ep-import-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.ep-import-overwrite {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--text-secondary, #9aa7bb);
+  cursor: pointer;
+}
+
+.ep-import-status {
+  flex-basis: 100%;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--text-secondary, #9aa7bb);
+}
+
+/* Campos rellenados automáticamente: se distinguen para poder revisarlos */
+.ep-mark.ep-mark-auto {
+  border-color: #4ade80;
+}
+
+.ep-marks-auto summary {
+  color: #4ade80;
+}
