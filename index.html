@@ -64,9 +64,97 @@
 
       gtag("config", "G-VZEP4GTRKY");
     </script>
-    <link rel="stylesheet" href="https://sfusion.netlify.app/style/styles.css" />
+    <link rel="stylesheet" href="https://sfusion.netlify.app/style/styles2.css" onerror="window.__sfLoadFailed&&window.__sfLoadFailed()" />
   </head>
   <body>
+    <!-- Pantalla SIN CONEXIÓN: 100% local, no depende de internet -->
+    <style>
+      /* Aislado del CSS global de la app y adaptable a móvil, tablet y horizontal */
+      #sf-offline, #sf-offline * {
+        box-sizing: border-box; margin: 0; padding: 0; border: 0;
+        -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        letter-spacing: normal; text-transform: none;
+      }
+      #sf-offline {
+        position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 2147483000;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: clamp(8px, 2.2vmin, 16px);
+        padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right))
+                 max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+        overflow-y: auto; text-align: center;
+        background: #0a0f1a; color: #e8edf5; font-size: 16px; line-height: 1.4;
+      }
+      #sf-offline[hidden] { display: none; }
+      #sf-offline svg {
+        flex: none; width: clamp(52px, 16vmin, 92px); height: clamp(52px, 16vmin, 92px);
+        stroke: #ff6b00; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+      }
+      #sf-offline h2 { font-size: clamp(18px, 4.8vmin, 26px); font-weight: 700; color: #e8edf5; }
+      #sf-offline p {
+        width: 100%; max-width: min(90vw, 340px);
+        font-size: clamp(14px, 3.4vmin, 17px); color: #9aa7bb;
+      }
+      #sf-offline button {
+        flex: none; width: min(100%, 260px); min-height: 48px; margin-top: clamp(4px, 1.5vmin, 12px);
+        padding: 12px 24px; border-radius: 999px; background: #ff6b00; color: #fff;
+        font-size: 16px; font-weight: 700; cursor: pointer; -webkit-tap-highlight-color: transparent;
+      }
+      #sf-offline button:active { transform: scale(0.97); }
+      #sf-offline button:disabled { opacity: 0.6; }
+    </style>
+    <div id="sf-offline" hidden role="alert">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 20h.01"/>
+        <path d="M8.5 16.429a5 5 0 0 1 7 0"/>
+        <path d="M5 12.859a10 10 0 0 1 5.17-2.69"/>
+        <path d="M19 12.859a10 10 0 0 0-2.007-1.523"/>
+        <path d="M2 8.82a15 15 0 0 1 4.177-2.643"/>
+        <path d="M22 8.82a15 15 0 0 0-11.288-3.764"/>
+        <path d="m2 2 20 20"/>
+      </svg>
+      <h2>Sin conexión</h2>
+      <p id="sf-offline-msg">No pudimos conectar con StreamFusion. Revisa tu Wi-Fi o tus datos móviles e inténtalo de nuevo.</p>
+      <button id="sf-offline-retry" type="button">Reintentar</button>
+    </div>
+    <script>
+      (function () {
+        var box = document.getElementById("sf-offline");
+        var msg = document.getElementById("sf-offline-msg");
+        var btn = document.getElementById("sf-offline-retry");
+        var DEFAULT_MSG = msg.textContent;
+        var PING = "https://sfusion.netlify.app/js/config.js";
+        var loadFailed = false;
+
+        function show(text) { msg.textContent = text || DEFAULT_MSG; box.hidden = false; }
+        function hide() { box.hidden = true; }
+
+        // Lo llaman los <script>/<link> remotos si no pudieron cargar
+        window.__sfLoadFailed = function () { loadFailed = true; show(); };
+
+        function ping() {
+          var ctrl = typeof AbortController === "function" ? new AbortController() : null;
+          var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 6000) : null;
+          return fetch(PING + "?r=" + Date.now(), { mode: "no-cors", cache: "no-store", signal: ctrl ? ctrl.signal : undefined })
+            .then(function () { if (timer) clearTimeout(timer); return true; })
+            .catch(function () { if (timer) clearTimeout(timer); return false; });
+        }
+
+        function retry() {
+          btn.disabled = true; btn.textContent = "Comprobando…";
+          ping().then(function (ok) {
+            btn.disabled = false; btn.textContent = "Reintentar";
+            if (ok) { if (loadFailed) location.reload(); else hide(); }
+            else show("Todavía no hay conexión. Revisa tu Wi-Fi o tus datos móviles.");
+          });
+        }
+
+        btn.addEventListener("click", retry);
+        window.addEventListener("offline", function () { show(); });
+        window.addEventListener("online", retry);
+        if (navigator.onLine === false) show();
+      })();
+    </script>
     <!-- Loading spinner -->
     <div class="spinner-container" id="spinner-container">
       <div class="spinner"></div>
@@ -2852,9 +2940,9 @@
     </div>
     <!-- SortableJS for drag-and-drop -->
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
-    <script type="module" src="https://sfusion.netlify.app/js/config.js" crossorigin="anonymous"></script>
-    <script type="module" src="https://sfusion.netlify.app/js/script.js" crossorigin="anonymous"></script>
-    <script type="module" src="https://sfusion.netlify.app/js/script.block.js" crossorigin="anonymous"></script>
+    <script type="module" src="https://sfusion.netlify.app/js/config.js" crossorigin="anonymous" onerror="window.__sfLoadFailed&&window.__sfLoadFailed()"></script>
+    <script type="module" src="https://sfusion.netlify.app/js/script2.js" crossorigin="anonymous" onerror="window.__sfLoadFailed&&window.__sfLoadFailed()"></script>
+    <script type="module" src="https://sfusion.netlify.app/js/script.block.js" crossorigin="anonymous" onerror="window.__sfLoadFailed&&window.__sfLoadFailed()"></script>
 
     <!-- Trailer Modal -->
     <div id="trailer-modal" class="modal-overlay" style="display: none">
