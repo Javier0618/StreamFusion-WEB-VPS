@@ -11540,7 +11540,14 @@ function sfSendConfig(iframe) {
 // Solo RELLENA los campos del panel. Nada se guarda hasta que pulses "Guardar".
 // Si el navegador bloquea la conexión (CORS), cambia esta dirección por tu propio proxy.
 const SF_INTRODB_BASE = "https://api.theintrodb.org/v3";
-const SF_INTRODB_PARALLEL = 3; // consultas simultáneas (para no saturar el servicio)
+const SF_INTRODB_PARALLEL = 2;   // consultas simultáneas (bájalo a 1 si el servicio te sigue limitando)
+const SF_INTRODB_DELAY_MS = 300; // pausa entre consultas de cada hilo, para no hacer ráfagas
+
+// Memoria de lo ya consultado (en este dispositivo): evita repetir consultas
+const SF_INTRODB_CACHE_KEY = "sf_introdb_cache_v1";
+const SF_INTRODB_TTL_FOUND = 30 * 24 * 3600 * 1000; // con datos: 30 días
+const SF_INTRODB_TTL_NONE = 7 * 24 * 3600 * 1000;   // sin datos: 7 días (la comunidad los va agregando)
+const SF_INTRODB_CACHE_MAX_SERIES = 50;
 
 // Convierte la respuesta de TheIntroDB (milisegundos) en los 3 campos del panel (segundos)
 function sfPickIntroDbMarks(json) {
@@ -11572,11 +11579,56 @@ function sfPickIntroDbMarks(json) {
   return out;
 }
 
+// ---------- Memoria de consultas ----------
+function sfIntroDbCacheRead() {
+  try {
+    const v = JSON.parse(localStorage.getItem(SF_INTRODB_CACHE_KEY) || "{}");
+    return v && typeof v === "object" && !Array.isArray(v) ? v : {};
+  } catch {
+    return {};
+  }
+}
+
+// undefined = no hay (o caducó) · null = consultado y SIN datos · objeto = marcas
+function sfIntroDbCacheGet(tmdbId, season, episode) {
+  const entry = (sfIntroDbCacheRead()[String(tmdbId)] || {})[`${season}-${episode}`];
+  if (!entry || typeof entry !== "object") return undefined;
+  const ttl = entry.m ? SF_INTRODB_TTL_FOUND : SF_INTRODB_TTL_NONE;
+  if (!Number.isFinite(entry.t) || Date.now() - entry.t > ttl) return undefined;
+  return entry.m || null;
+}
+
+function sfIntroDbCacheSet(tmdbId, season, episode, marks) {
+  try {
+    const all = sfIntroDbCacheRead();
+    const key = String(tmdbId);
+    const hasData = marks && (marks.intro_end !== null || marks.credits_start !== null);
+    all[key] = all[key] && typeof all[key] === "object" ? all[key] : {};
+    all[key][`${season}-${episode}`] = { m: hasData ? marks : null, t: Date.now() };
+    all[key]._t = Date.now();
+    const keys = Object.keys(all);
+    if (keys.length > SF_INTRODB_CACHE_MAX_SERIES) {
+      keys
+        .sort((x, y) => ((all[x] && all[x]._t) || 0) - ((all[y] && all[y]._t) || 0))
+        .slice(0, keys.length - SF_INTRODB_CACHE_MAX_SERIES)
+        .forEach((k) => delete all[k]);
+    }
+    localStorage.setItem(SF_INTRODB_CACHE_KEY, JSON.stringify(all));
+  } catch {}
+}
+
 async function sfFetchIntroDb(tmdbId, season, episode) {
   const url = `${SF_INTRODB_BASE}/media?tmdb_id=${encodeURIComponent(tmdbId)}&season=${season}&episode=${episode}`;
   const res = await fetch(url);
   if (res.status === 404) return { status: "none" };
-  if (res.status === 429) return { status: "rate" };
+  if (res.status === 429) {
+    let retryAfter = null;
+    try {
+      const h = res.headers && res.headers.get ? Number(res.headers.get("Retry-After")) : NaN;
+      if (Number.isFinite(h) && h > 0) retryAfter = Math.ceil(h);
+    } catch {}
+    return { status: "rate", retryAfter };
+  }
   if (!res.ok) return { status: "error", code: res.status };
   return { status: "ok", marks: sfPickIntroDbMarks(await res.json()) };
 }
@@ -11585,6 +11637,14 @@ function sfMarkInput(season, episode, mark) {
   return document.querySelector(
     `.ep-mark[data-mark="${mark}"][data-season="${season}"][data-episode="${episode}"]`,
   );
+}
+
+// ¿El episodio ya tiene algún tiempo escrito en el panel?
+function sfEpisodeHasMarks(season, episode) {
+  return SF_MARK_KEYS.some((k) => {
+    const inp = sfMarkInput(season, episode, k);
+    return inp && inp.value.trim() !== "";
+  });
 }
 
 // Pone los tiempos en los campos del panel. Devuelve qué se rellenó.
@@ -11622,7 +11682,14 @@ function sfApplyImportedMarks(season, episode, marks, overwrite) {
   return done;
 }
 
-async function sfRunIntroDbImport(tmdbId, overwrite, setStatus) {
+const sfSleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// options: { overwrite: bool, useCache: bool }
+async function sfRunIntroDbImport(tmdbId, options, setStatus) {
+  const overwrite = !!(options && options.overwrite);
+  const useCache = !options || options.useCache !== false;
+
+  // 1) Episodios que aparecen en el panel
   const pairs = [];
   const seen = new Set();
   document.querySelectorAll('.ep-mark[data-mark="intro_end"]').forEach((inp) => {
@@ -11635,65 +11702,115 @@ async function sfRunIntroDbImport(tmdbId, overwrite, setStatus) {
     }
   });
 
-  const stats = { total: pairs.length, intro: 0, credits: 0, none: 0, errors: 0, ok: 0 };
-  let finished = 0;
+  const stats = {
+    total: pairs.length, skipped: 0, cached: 0, fetched: 0,
+    intro: 0, credits: 0, none: 0, errors: 0, remaining: 0, retryAfter: null,
+  };
+
+  // 2) Separar: ya tienen tiempos / ya consultados antes / faltan por consultar
+  const pending = [];
+  for (const p of pairs) {
+    if (!overwrite && sfEpisodeHasMarks(p.s, p.e)) { stats.skipped++; continue; }
+    const c = useCache ? sfIntroDbCacheGet(tmdbId, p.s, p.e) : undefined;
+    if (c !== undefined) {
+      stats.cached++;
+      if (c) {
+        const applied = sfApplyImportedMarks(p.s, p.e, c, overwrite);
+        if (applied.intro) stats.intro++;
+        if (applied.credits) stats.credits++;
+      } else {
+        stats.none++;
+      }
+      continue;
+    }
+    pending.push(p);
+  }
+
+  // 3) Consultar solo los que faltan
+  let handled = 0;
   let stop = null;
   let firstError = null;
-  const queue = pairs.slice();
+  const queue = pending.slice();
   let probing = true; // la primera consulta va sola: si no hay conexión, se detiene enseguida
 
   async function processOne({ s, e }) {
     try {
       const r = await sfFetchIntroDb(tmdbId, s, e);
-      if (r.status === "rate") { stop = "rate"; return; }
+      if (r.status === "rate") {
+        stop = "rate";
+        stats.retryAfter = Math.max(stats.retryAfter || 0, r.retryAfter || 0) || null;
+        return;
+      }
       if (r.status === "error") {
         stats.errors++;
         firstError = firstError || `HTTP ${r.code}`;
       } else if (r.status === "none") {
-        stats.ok++;
+        stats.fetched++;
         stats.none++;
+        sfIntroDbCacheSet(tmdbId, s, e, null);
       } else {
-        stats.ok++;
+        stats.fetched++;
+        sfIntroDbCacheSet(tmdbId, s, e, r.marks);
         const applied = sfApplyImportedMarks(s, e, r.marks, overwrite);
         if (applied.intro) stats.intro++;
         if (applied.credits) stats.credits++;
         if (r.marks.intro_end === null && r.marks.credits_start === null) stats.none++;
       }
+      handled++;
     } catch {
       stats.errors++;
       firstError = firstError || "network";
-      if (stats.ok === 0 && (probing || stats.errors >= SF_INTRODB_PARALLEL)) {
+      if (stats.fetched === 0 && (probing || stats.errors >= SF_INTRODB_PARALLEL)) {
         stop = "network";
         return;
       }
+      handled++;
     }
-    finished++;
-    setStatus(`Consultando… ${finished}/${stats.total}`);
+    setStatus(`Consultando… ${handled}/${pending.length}`);
   }
 
   async function worker() {
-    while (queue.length && !stop) await processOne(queue.shift());
+    while (queue.length && !stop) {
+      await processOne(queue.shift());
+      if (SF_INTRODB_DELAY_MS > 0 && queue.length && !stop) await sfSleep(SF_INTRODB_DELAY_MS);
+    }
   }
 
   if (queue.length) await processOne(queue.shift());
   probing = false;
-  await Promise.all(
-    Array.from({ length: Math.min(SF_INTRODB_PARALLEL, queue.length) }, worker),
-  );
+  if (!stop) {
+    await Promise.all(
+      Array.from({ length: Math.min(SF_INTRODB_PARALLEL, queue.length) }, worker),
+    );
+  }
+
+  stats.remaining = pending.length - handled;
   return { stats, stop, firstError };
 }
 
 function sfIntroDbSummary(result) {
   const { stats, stop, firstError } = result;
   if (!stats.total) return "No hay episodios en pantalla para consultar.";
-  if (stop === "network")
+  if (stop === "network" && stats.fetched === 0 && stats.cached === 0)
     return "No se pudo conectar con TheIntroDB desde aquí (puede ser un bloqueo del navegador por CORS). Usa un proxy en tu servidor o pon los tiempos a mano.";
-  let msg = `Listo: intro en ${stats.intro} y créditos en ${stats.credits} de ${stats.total} episodios`;
-  if (stats.none) msg += `; ${stats.none} sin datos en TheIntroDB`;
-  if (stats.errors) msg += `; ${stats.errors} con error (${firstError})`;
-  msg += ". ";
-  if (stop === "rate")
-    msg += "El servicio pidió esperar (demasiadas consultas): se detuvo antes de terminar, vuelve a intentarlo en un minuto. ";
+
+  let msg = `Intro en ${stats.intro} y créditos en ${stats.credits} (de ${stats.total} episodios). `;
+  const parts = [];
+  if (stats.skipped) parts.push(`${stats.skipped} ya tenían tiempos (no se consultaron)`);
+  if (stats.cached) parts.push(`${stats.cached} tomados de la memoria`);
+  if (stats.fetched) parts.push(`${stats.fetched} consultados ahora`);
+  if (stats.none) parts.push(`${stats.none} sin datos en TheIntroDB`);
+  if (stats.errors) parts.push(`${stats.errors} con error (${firstError})`);
+  if (parts.length) msg += parts.join("; ") + ". ";
+
+  if (stop === "rate") {
+    const wait = stats.retryAfter ? `unos ${stats.retryAfter} segundos` : "un momento";
+    msg += `El servicio alcanzó su límite: faltan ${stats.remaining} episodios por consultar. Espera ${wait} y vuelve a pulsar el botón: continuará solo con los que faltan. `;
+  } else if (stop === "network") {
+    msg += `Se perdió la conexión: faltan ${stats.remaining} episodios. Vuelve a pulsar el botón para continuar. `;
+  } else if (stats.remaining > 0) {
+    msg += `Faltan ${stats.remaining} episodios por consultar. `;
+  }
   msg += "Revisa los marcados con ⏱ y pulsa Guardar.";
   return msg;
 }
@@ -11707,7 +11824,8 @@ function sfInsertIntroDbBar(tmdbId) {
   bar.innerHTML = `
     <button type="button" class="modal-btn" id="sf-introdb-btn">Importar tiempos automáticos</button>
     <label class="ep-import-overwrite"><input type="checkbox" id="sf-introdb-overwrite"> Reemplazar los que ya escribí</label>
-    <div class="ep-import-status" id="sf-introdb-status">Busca intro y créditos en TheIntroDB. No se guarda nada hasta que pulses Guardar.</div>`;
+    <label class="ep-import-overwrite"><input type="checkbox" id="sf-introdb-fresh"> Ignorar la memoria (consultar todo de nuevo)</label>
+    <div class="ep-import-status" id="sf-introdb-status">Solo consulta los episodios que aún no tienen tiempos y recuerda lo ya obtenido. No se guarda nada hasta que pulses Guardar.</div>`;
   videoUrlModalBody.insertAdjacentElement("afterbegin", bar);
 
   const btn = bar.querySelector("#sf-introdb-btn");
@@ -11718,7 +11836,10 @@ function sfInsertIntroDbBar(tmdbId) {
     try {
       const result = await sfRunIntroDbImport(
         tmdbId,
-        bar.querySelector("#sf-introdb-overwrite").checked,
+        {
+          overwrite: bar.querySelector("#sf-introdb-overwrite").checked,
+          useCache: !bar.querySelector("#sf-introdb-fresh").checked,
+        },
         (t) => { status.textContent = t; },
       );
       status.textContent = sfIntroDbSummary(result);
