@@ -7801,6 +7801,7 @@ async function showVideoUrlModal(item) {
                     <li>
                         <label for="video-url-s${season.season_number}-e${episode.episode_number}">${getText("details.episode")} ${episode.episode_number}: ${episode.name}</label>
                         <input type="text" id="video-url-s${season.season_number}-e${episode.episode_number}" class="form-input" data-season="${season.season_number}" data-episode="${episode.episode_number}" value="${currentUrl}" placeholder="https://...">
+                        ${sfMarksFieldsHtml(season.season_number, episode)}
                     </li>
                 `;
       });
@@ -7841,6 +7842,7 @@ async function handleUpdateContentUrls() {
   } else if (itemToEdit.media_type === "tv") {
     // Create a deep copy to avoid modifying the original object directly
     const updatedSeasons = JSON.parse(JSON.stringify(itemToEdit.seasons));
+    const markErrors = [];
 
     for (const seasonKey in updatedSeasons) {
       const season = updatedSeasons[seasonKey];
@@ -7852,7 +7854,17 @@ async function handleUpdateContentUrls() {
         if (input) {
           episode.video_url = input.value.trim();
         }
+        sfApplyMarkInputs(season.season_number, episode, markErrors);
       }
+    }
+    if (markErrors.length > 0) {
+      hideSpinner();
+      showMessageModal(
+        getText("modal.errorTitle"),
+        `Revisa los tiempos de intro/créditos (formato mm:ss, por ejemplo 1:30; la intro necesita "desde" y "hasta"): ${markErrors.join(", ")}`,
+        "error",
+      );
+      return;
     }
     updateData.seasons = updatedSeasons;
   }
@@ -7896,6 +7908,7 @@ function proceedToImportOptions() {
       .getElementById("movie-video-url")
       .value.trim();
   } else if (itemToImport.media_type === "tv") {
+    const markErrors = [];
     itemToImport.seasons.forEach((season) => {
       if (season.episodes) {
         season.episodes.forEach((episode) => {
@@ -7905,9 +7918,18 @@ function proceedToImportOptions() {
           if (input) {
             episode.video_url = input.value.trim();
           }
+          sfApplyMarkInputs(season.season_number, episode, markErrors);
         });
       }
     });
+    if (markErrors.length > 0) {
+      showMessageModal(
+        getText("modal.errorTitle"),
+        `Revisa los tiempos de intro/créditos (formato mm:ss, por ejemplo 1:30; la intro necesita "desde" y "hasta"): ${markErrors.join(", ")}`,
+        "error",
+      );
+      return;
+    }
   }
 
   videoUrlModal.style.display = "none";
@@ -8131,6 +8153,7 @@ async function confirmImportWithSections(event) {
                     air_date: episode.air_date,
                     still_path: episode.still_path,
                     video_url: episode.video_url || "",
+                    ...sfMarksForSave(episode),
                   };
                 });
               }
@@ -11122,8 +11145,9 @@ const SF_PROGRESS_MAX = 100;
 const SF_WATCH_SECONDS = 60; // segundos vistos para considerar el episodio "visto"
 const SF_WATCH_RATIO = 0.9; // o este porcentaje del video
 // ---- Aviso "Siguiente episodio" (lo dibuja el reproductor, también en pantalla completa) ----
-const SF_NEXT_BEFORE_END = 60; // aparece cuando faltan estos segundos (0 = sin aviso: solo al terminar)
+const SF_NEXT_BEFORE_END = 50; // aparece cuando faltan estos segundos (0 = sin aviso: solo al terminar)
 const SF_NEXT_COUNTDOWN = 10;  // segundos de cuenta regresiva antes de cambiar de episodio
+const SF_AUTO_SKIP_INTRO = false; // true = salta la intro sola, sin mostrar el botón "Saltar intro"
 const SF_SEND_SEEK = false; // false = el propio reproductor reanuda el minuto ("Volver a: hh:mm:ss")
 
 const sfCurrent = { id: null, type: null, season: null, episode: null };
@@ -11382,6 +11406,117 @@ function sfHasNext() {
   );
 }
 
+// ---------- Marcas por episodio: intro y créditos (se guardan en Firestore) ----------
+const SF_MARK_KEYS = ["intro_start", "intro_end", "credits_start"];
+
+// "90" | "1:30" | "01:30" | "1:02:03"  →  segundos.  Vacío → null.  Inválido → NaN
+function sfParseTime(v) {
+  const str = String(v ?? "").trim();
+  if (!str) return null;
+  if (/^\d+(\.\d+)?$/.test(str)) return Number(str);
+  const m = str.match(/^(?:(\d+):)?(\d{1,2}):(\d{1,2})$/);
+  if (!m) return NaN;
+  const h = m[1] ? Number(m[1]) : 0;
+  const mi = Number(m[2]);
+  const sec = Number(m[3]);
+  if (sec >= 60 || (m[1] && mi >= 60)) return NaN;
+  return h * 3600 + mi * 60 + sec;
+}
+
+// segundos → "m:ss" o "h:mm:ss"  (para mostrarlo en el panel)
+function sfFormatTime(sec) {
+  if (sec === null || sec === undefined || sec === "" || !Number.isFinite(Number(sec)))
+    return "";
+  const total = Math.max(0, Math.round(Number(sec)));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const pad = (n) => String(n).padStart(2, "0");
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
+// HTML de los 3 campos (plegados) que se agregan bajo el enlace de cada episodio
+function sfMarksFieldsHtml(seasonNum, episode) {
+  const field = (key, label) =>
+    `<label class="ep-mark-field">${label}
+       <input type="text" class="form-input ep-mark" inputmode="numeric" autocomplete="off"
+         data-mark="${key}" data-season="${seasonNum}" data-episode="${episode.episode_number}"
+         value="${sfFormatTime(episode[key])}" placeholder="0:00">
+     </label>`;
+  const has = SF_MARK_KEYS.some((k) => episode[k] !== null && episode[k] !== undefined && episode[k] !== "");
+  return `<details class="ep-marks-details">
+      <summary>Intro y créditos${has ? " ⏱" : ""}</summary>
+      <div class="ep-marks">
+        ${field("intro_start", "Intro desde")}
+        ${field("intro_end", "Intro hasta")}
+        ${field("credits_start", "Créditos desde")}
+      </div>
+    </details>`;
+}
+
+// Lee los campos del panel y los pone en el objeto del episodio.
+// Si algo es inválido, agrega "T1 E3" a errors y no toca ese episodio.
+function sfApplyMarkInputs(seasonNum, episode, errors) {
+  const inputs = document.querySelectorAll(
+    `.ep-mark[data-season="${seasonNum}"][data-episode="${episode.episode_number}"]`,
+  );
+  if (!inputs.length) return; // no hay campos en pantalla: no tocar lo que ya existe
+  const vals = {};
+  inputs.forEach((inp) => {
+    vals[inp.dataset.mark] = sfParseTime(inp.value);
+  });
+  const label = `T${seasonNum} E${episode.episode_number}`;
+  if (SF_MARK_KEYS.some((k) => Number.isNaN(vals[k]))) {
+    errors.push(label);
+    return;
+  }
+  const st = vals.intro_start;
+  const en = vals.intro_end;
+  const cr = vals.credits_start;
+  if (
+    (st != null && en == null) || // puso inicio pero no fin
+    (st != null && en != null && en <= st) ||
+    (cr != null && cr <= 0)
+  ) {
+    errors.push(label);
+    return;
+  }
+  SF_MARK_KEYS.forEach((k) => {
+    if (vals[k] == null) delete episode[k];
+    else episode[k] = Math.round(vals[k]);
+  });
+}
+
+// Solo los campos de marcas que tengan un número válido (Firestore no admite undefined)
+function sfMarksForSave(episode) {
+  const out = {};
+  SF_MARK_KEYS.forEach((k) => {
+    if (episode[k] !== null && episode[k] !== undefined && Number.isFinite(Number(episode[k])))
+      out[k] = Number(episode[k]);
+  });
+  return out;
+}
+
+// Marcas del episodio que se está reproduciendo
+function sfGetEpisodeMarks() {
+  const none = { introStart: null, introEnd: null, creditsStart: null };
+  if (sfCurrent.type !== "tv" || !sfCurrent.id) return none;
+  if (sfSeasonsInfo.id !== sfCurrent.id || !sfSeasonsInfo.data) return none;
+  const season = Object.values(sfSeasonsInfo.data).find(
+    (x) => Number(x.season_number) === sfCurrent.season,
+  );
+  if (!season || !season.episodes) return none;
+  const ep =
+    season.episodes[sfCurrent.episode] ||
+    Object.values(season.episodes).find((x) => Number(x.episode_number) === sfCurrent.episode);
+  if (!ep) return none;
+  const n = (v) =>
+    v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? null : Number(v);
+  const introEnd = n(ep.intro_end);
+  const introStart = introEnd !== null ? (n(ep.intro_start) ?? 0) : null;
+  return { introStart, introEnd, creditsStart: n(ep.credits_start) };
+}
+
 function sfSendConfig(iframe) {
   try {
     const origin = new URL(iframe.src).origin;
@@ -11391,6 +11526,8 @@ function sfSendConfig(iframe) {
         hasNext: sfHasNext(),
         showBeforeEnd: SF_NEXT_BEFORE_END,
         countdown: SF_NEXT_COUNTDOWN,
+        autoSkipIntro: SF_AUTO_SKIP_INTRO,
+        ...sfGetEpisodeMarks(),
       },
       origin,
     );
