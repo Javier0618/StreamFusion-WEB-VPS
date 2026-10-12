@@ -7818,6 +7818,8 @@ async function showVideoUrlModal(item) {
           header.querySelector("i").classList.toggle("fa-chevron-up");
         });
       });
+
+    sfInsertIntroDbBar(fullItemData.id);
   }
 }
 
@@ -11532,6 +11534,200 @@ function sfSendConfig(iframe) {
       origin,
     );
   } catch {}
+}
+
+// ---------- Importar tiempos automáticos desde TheIntroDB (panel de administrador) ----------
+// Solo RELLENA los campos del panel. Nada se guarda hasta que pulses "Guardar".
+// Si el navegador bloquea la conexión (CORS), cambia esta dirección por tu propio proxy.
+const SF_INTRODB_BASE = "https://api.theintrodb.org/v3";
+const SF_INTRODB_PARALLEL = 3; // consultas simultáneas (para no saturar el servicio)
+
+// Convierte la respuesta de TheIntroDB (milisegundos) en los 3 campos del panel (segundos)
+function sfPickIntroDbMarks(json) {
+  const out = { intro_start: null, intro_end: null, credits_start: null };
+  if (!json || typeof json !== "object") return out;
+  const root = json.data && typeof json.data === "object" ? json.data : json;
+  const ok = (v) => v !== null && v !== undefined && Number.isFinite(Number(v));
+  const sec = (ms) => Math.round(Number(ms) / 1000);
+
+  // Intro: primer tramo con fin válido. Inicio vacío = desde el principio (0)
+  const intro = (Array.isArray(root.intro) ? root.intro : []).find(
+    (seg) => seg && ok(seg.end_ms) && Number(seg.end_ms) > (ok(seg.start_ms) ? Number(seg.start_ms) : 0),
+  );
+  if (intro) {
+    const st = ok(intro.start_ms) ? sec(intro.start_ms) : 0;
+    const en = sec(intro.end_ms);
+    if (en > st) {
+      out.intro_start = st;
+      out.intro_end = en;
+    }
+  }
+
+  // Créditos: el que empieza más temprano (fin vacío = hasta el final del video)
+  const credits = (Array.isArray(root.credits) ? root.credits : [])
+    .filter((seg) => seg && ok(seg.start_ms) && Number(seg.start_ms) > 0)
+    .sort((a, b) => Number(a.start_ms) - Number(b.start_ms))[0];
+  if (credits) out.credits_start = sec(credits.start_ms);
+
+  return out;
+}
+
+async function sfFetchIntroDb(tmdbId, season, episode) {
+  const url = `${SF_INTRODB_BASE}/media?tmdb_id=${encodeURIComponent(tmdbId)}&season=${season}&episode=${episode}`;
+  const res = await fetch(url);
+  if (res.status === 404) return { status: "none" };
+  if (res.status === 429) return { status: "rate" };
+  if (!res.ok) return { status: "error", code: res.status };
+  return { status: "ok", marks: sfPickIntroDbMarks(await res.json()) };
+}
+
+function sfMarkInput(season, episode, mark) {
+  return document.querySelector(
+    `.ep-mark[data-mark="${mark}"][data-season="${season}"][data-episode="${episode}"]`,
+  );
+}
+
+// Pone los tiempos en los campos del panel. Devuelve qué se rellenó.
+function sfApplyImportedMarks(season, episode, marks, overwrite) {
+  const done = { intro: false, credits: false };
+  const st = sfMarkInput(season, episode, "intro_start");
+  const en = sfMarkInput(season, episode, "intro_end");
+  const cr = sfMarkInput(season, episode, "credits_start");
+  const flag = (inp) => {
+    inp.classList.add("ep-mark-auto");
+    const det = inp.closest ? inp.closest("details") : null;
+    if (det) {
+      det.classList.add("ep-marks-auto");
+      const sum = det.querySelector("summary");
+      if (sum) sum.textContent = "Intro y créditos ⏱ (auto)";
+    }
+  };
+
+  if (st && en && marks.intro_start !== null && marks.intro_end !== null) {
+    const hasManual = st.value.trim() !== "" || en.value.trim() !== "";
+    if (overwrite || !hasManual) {
+      st.value = sfFormatTime(marks.intro_start);
+      en.value = sfFormatTime(marks.intro_end);
+      flag(st); flag(en);
+      done.intro = true;
+    }
+  }
+  if (cr && marks.credits_start !== null) {
+    if (overwrite || cr.value.trim() === "") {
+      cr.value = sfFormatTime(marks.credits_start);
+      flag(cr);
+      done.credits = true;
+    }
+  }
+  return done;
+}
+
+async function sfRunIntroDbImport(tmdbId, overwrite, setStatus) {
+  const pairs = [];
+  const seen = new Set();
+  document.querySelectorAll('.ep-mark[data-mark="intro_end"]').forEach((inp) => {
+    const s = parseInt(inp.dataset.season, 10);
+    const e = parseInt(inp.dataset.episode, 10);
+    const key = `${s}-${e}`;
+    if (s > 0 && e > 0 && !seen.has(key)) {
+      seen.add(key);
+      pairs.push({ s, e });
+    }
+  });
+
+  const stats = { total: pairs.length, intro: 0, credits: 0, none: 0, errors: 0, ok: 0 };
+  let finished = 0;
+  let stop = null;
+  let firstError = null;
+  const queue = pairs.slice();
+  let probing = true; // la primera consulta va sola: si no hay conexión, se detiene enseguida
+
+  async function processOne({ s, e }) {
+    try {
+      const r = await sfFetchIntroDb(tmdbId, s, e);
+      if (r.status === "rate") { stop = "rate"; return; }
+      if (r.status === "error") {
+        stats.errors++;
+        firstError = firstError || `HTTP ${r.code}`;
+      } else if (r.status === "none") {
+        stats.ok++;
+        stats.none++;
+      } else {
+        stats.ok++;
+        const applied = sfApplyImportedMarks(s, e, r.marks, overwrite);
+        if (applied.intro) stats.intro++;
+        if (applied.credits) stats.credits++;
+        if (r.marks.intro_end === null && r.marks.credits_start === null) stats.none++;
+      }
+    } catch {
+      stats.errors++;
+      firstError = firstError || "network";
+      if (stats.ok === 0 && (probing || stats.errors >= SF_INTRODB_PARALLEL)) {
+        stop = "network";
+        return;
+      }
+    }
+    finished++;
+    setStatus(`Consultando… ${finished}/${stats.total}`);
+  }
+
+  async function worker() {
+    while (queue.length && !stop) await processOne(queue.shift());
+  }
+
+  if (queue.length) await processOne(queue.shift());
+  probing = false;
+  await Promise.all(
+    Array.from({ length: Math.min(SF_INTRODB_PARALLEL, queue.length) }, worker),
+  );
+  return { stats, stop, firstError };
+}
+
+function sfIntroDbSummary(result) {
+  const { stats, stop, firstError } = result;
+  if (!stats.total) return "No hay episodios en pantalla para consultar.";
+  if (stop === "network")
+    return "No se pudo conectar con TheIntroDB desde aquí (puede ser un bloqueo del navegador por CORS). Usa un proxy en tu servidor o pon los tiempos a mano.";
+  let msg = `Listo: intro en ${stats.intro} y créditos en ${stats.credits} de ${stats.total} episodios`;
+  if (stats.none) msg += `; ${stats.none} sin datos en TheIntroDB`;
+  if (stats.errors) msg += `; ${stats.errors} con error (${firstError})`;
+  msg += ". ";
+  if (stop === "rate")
+    msg += "El servicio pidió esperar (demasiadas consultas): se detuvo antes de terminar, vuelve a intentarlo en un minuto. ";
+  msg += "Revisa los marcados con ⏱ y pulsa Guardar.";
+  return msg;
+}
+
+function sfInsertIntroDbBar(tmdbId) {
+  if (typeof videoUrlModalBody === "undefined" || !videoUrlModalBody) return;
+  videoUrlModalBody.querySelector("#sf-introdb-bar")?.remove();
+  const bar = document.createElement("div");
+  bar.id = "sf-introdb-bar";
+  bar.className = "ep-import-bar";
+  bar.innerHTML = `
+    <button type="button" class="modal-btn" id="sf-introdb-btn">Importar tiempos automáticos</button>
+    <label class="ep-import-overwrite"><input type="checkbox" id="sf-introdb-overwrite"> Reemplazar los que ya escribí</label>
+    <div class="ep-import-status" id="sf-introdb-status">Busca intro y créditos en TheIntroDB. No se guarda nada hasta que pulses Guardar.</div>`;
+  videoUrlModalBody.insertAdjacentElement("afterbegin", bar);
+
+  const btn = bar.querySelector("#sf-introdb-btn");
+  const status = bar.querySelector("#sf-introdb-status");
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    status.textContent = "Consultando…";
+    try {
+      const result = await sfRunIntroDbImport(
+        tmdbId,
+        bar.querySelector("#sf-introdb-overwrite").checked,
+        (t) => { status.textContent = t; },
+      );
+      status.textContent = sfIntroDbSummary(result);
+    } catch (err) {
+      status.textContent = `Error inesperado: ${err && err.message ? err.message : err}`;
+    } finally {
+      btn.disabled = false;
+    }
+  });
 }
 
 // ---------- Mensajes del reproductor embed ----------
