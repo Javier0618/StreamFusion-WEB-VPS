@@ -7354,3 +7354,45 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
   border-radius: 4px;
   pointer-events: none;
 }
+
+
+/* ================================================================
+   EP-MARKS: campos de intro y créditos por episodio (panel de admin)
+   ================================================================ */
+.ep-marks-details {
+  margin-top: 6px;
+}
+
+.ep-marks-details summary {
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: var(--text-secondary, #9aa7bb);
+  user-select: none;
+}
+
+.ep-marks {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.ep-mark-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.72rem;
+  color: var(--text-secondary, #9aa7bb);
+}
+
+.ep-mark-field .form-input {
+  padding: 6px 8px;
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+@media (max-width: 480px) {
+  .ep-marks {
+    grid-template-columns: 1fr;
+  }
+}
