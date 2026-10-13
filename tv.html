@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>StreamFusion TV</title>
+    <link rel="stylesheet" href="https://sfusion.netlify.app/style/tv.css" />
+  </head>
+  <body>
+    <div id="app">
+      <nav id="nav">
+        <div class="brand">Stream<b>Fusion</b></div>
+        <div id="tabs"></div>
+      </nav>
+
+      <!-- Inicio y secciones: banner principal + filas -->
+      <main id="screen-browse" class="screen" hidden>
+        <div id="hero" class="hero" hidden>
+          <div id="hero-bg-a" class="hero-bg"></div>
+          <div id="hero-bg-b" class="hero-bg"></div>
+          <div class="hero-shade"></div>
+          <div class="hero-body">
+            <div id="hero-kind" class="hero-kind"></div>
+            <h1 id="hero-title"></h1>
+            <div id="hero-meta" class="hero-meta"></div>
+            <p id="hero-overview" class="hero-overview"></p>
+            <div class="hero-actions">
+              <button id="hero-play" class="btn primary hbtn focusable" data-kind="hero-play" data-key="hero:play">▶ Reproducir</button>
+              <button id="hero-info" class="btn hbtn focusable" data-kind="hero-info" data-key="hero:info">Más información</button>
+            </div>
+          </div>
+          <div id="hero-dots" class="hero-dots"></div>
+        </div>
+        <div id="rows" class="rows"></div>
+      </main>
+
+      <!-- "Ver todo": cuadrícula con carga progresiva -->
+      <section id="screen-grid" class="screen" hidden>
+        <div class="grid-head"><h1 id="grid-title"></h1><span id="grid-count"></span></div>
+        <div id="grid" class="grid"></div>
+      </section>
+
+      <section id="screen-detail" class="screen" hidden></section>
+
+      <section id="screen-player" class="screen" hidden>
+        <iframe id="tv-player" tabindex="-1" src="about:blank" frameborder="0"
+          allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
+      </section>
+
+      <section id="screen-login" class="screen" hidden>
+        <div class="login-box">
+          <h1>Iniciar sesión</h1>
+          <p>Pulsa OK sobre un campo para escribir con el teclado del televisor.</p>
+          <input id="login-email" class="focusable field" type="email" placeholder="Correo" autocomplete="off" />
+          <input id="login-pass" class="focusable field" type="password" placeholder="Contraseña" autocomplete="off" />
+          <button id="login-btn" class="focusable btn" data-kind="login">Entrar</button>
+        </div>
+      </section>
+
+      <div id="toast" hidden></div>
+      <div id="loading"><div class="spinner"></div></div>
+    </div>
+
+    <script type="module" src="https://sfusion.netlify.app/js/tv.js"></script>
+  </body>
+</html>
