@@ -196,3 +196,114 @@ export function progressPercent(p) {
   if (!p || !(Number(p.d) > 0)) return 0;
   return Math.max(0, Math.min(100, Math.round((Number(p.t) / Number(p.d)) * 100)));
 }
+
+
+// ================================================================
+//  SECCIONES, FILAS Y HÉROE (mismo contenido que la app del celular)
+// ================================================================
+export const MAIN_SECTIONS = [
+  ["inicio", "Inicio"], ["movies", "Películas"], ["series", "Series"], ["animes", "Animes"], ["doramas", "Doramas"],
+];
+
+// Nombres de géneros de TMDB (películas y series) en español
+export const GENRE_NAMES = {
+  28: "Acción", 12: "Aventura", 16: "Animación", 35: "Comedia", 80: "Crimen", 99: "Documental", 18: "Drama",
+  10751: "Familia", 14: "Fantasía", 36: "Historia", 27: "Terror", 10402: "Música", 9648: "Misterio",
+  10749: "Romance", 878: "Ciencia ficción", 10770: "Película de TV", 53: "Suspenso", 10752: "Bélica", 37: "Western",
+  10759: "Acción y aventura", 10762: "Infantil", 10763: "Noticias", 10764: "Reality", 10765: "Ciencia ficción y fantasía",
+  10766: "Telenovela", 10767: "Talk show", 10768: "Bélica y política",
+};
+
+export function genreIds(item) {
+  const g = item && Array.isArray(item.genres) ? item.genres : [];
+  return g.map((x) => Number(x && typeof x === "object" ? x.id : x)).filter((n) => Number.isFinite(n));
+}
+export function genreLabels(item, max = 3) {
+  return genreIds(item).map((id) => GENRE_NAMES[id]).filter(Boolean).slice(0, max);
+}
+
+export function inSection(item, key) {
+  const m = item && item.display_options && item.display_options.main_sections;
+  return Array.isArray(m) && m.includes(key);
+}
+const importedAt = (i) => (i && i.imported_at && Number(i.imported_at.seconds)) || 0;
+export const byRecent = (a, b) => importedAt(b) - importedAt(a);
+export const byRelease = (a, b) => (Date.parse(b.release_date) || 0) - (Date.parse(a.release_date) || 0);
+
+export function shuffle(arr, rng = Math.random) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
+// Contenido para el banner principal: al azar entre los que tienen imagen de fondo
+export function pickHero(items, n = 6, rng = Math.random) {
+  return shuffle(items.filter((i) => i && i.backdrop_path), rng).slice(0, n);
+}
+
+// Una fila: cards (lo que se ve), all (todo, para "Ver todo"; solo si hay más de los visibles)
+function makeRow(id, title, items, limit, kind = "poster", all = null) {
+  const full = all || items;
+  return { id, title, kind, cards: items.slice(0, limit).map((item) => ({ item })), all: full.length > Math.min(items.length, limit) ? full : null };
+}
+
+// Fila "Continuar viendo" (con el progreso guardado en este dispositivo)
+export function buildContinueRow(progress, byId, limit = 20) {
+  const list = buildContinueList(progress, byId, limit);
+  return list.length ? { id: "continue", title: "Continuar viendo", kind: "poster", cards: list, all: null } : null;
+}
+
+// Filas del Inicio: En estreno, Recién agregado y las secciones de tu panel (colección home_sections)
+export function buildHomeRows({ content, sections = [], rng = Math.random, limit = 20 }) {
+  const rows = [];
+  const flagged = (flag) => content.filter((i) => i.display_options && Array.isArray(i.display_options.home_sections) && i.display_options.home_sections.includes(flag));
+  const estreno = flagged("estreno").sort(byRelease);
+  if (estreno.length) rows.push(makeRow("estreno", "En estreno", estreno, limit));
+  let recent = flagged("agregado").sort(byRecent);
+  if (!recent.length) recent = [...content].sort(byRecent); // si no marcaste ninguno, todo lo reciente
+  if (recent.length) rows.push(makeRow("agregado", "Recién agregado", recent, limit));
+
+  for (const s of sections) {
+    const o = (s && s.options) || {};
+    const key = `sec:${s.id}`;
+    if (s.type === "category") {
+      const id = parseInt(o.categoryId, 10);
+      const all = content.filter((i) => genreIds(i).includes(id));
+      if (all.length) rows.push(makeRow(key, s.title, shuffle(all, rng), limit, "poster", [...all].sort(byRecent)));
+    } else if (s.type === "view") {
+      const all = content.filter((i) => inSection(i, o.view));
+      if (all.length) rows.push(makeRow(key, s.title, shuffle(all, rng), limit, "poster", [...all].sort(byRecent)));
+    } else if (s.type === "random") {
+      const pinnedIds = Array.isArray(o.pinnedIds) ? o.pinnedIds : [];
+      const pinned = pinnedIds.map((id) => content.find((c) => c.id === id || c.id === Number(id))).filter(Boolean);
+      const rest = shuffle(content.filter((c) => !pinnedIds.some((p) => p === c.id || Number(p) === c.id) && c.backdrop_path), rng);
+      const list = [...pinned, ...rest].slice(0, Number(o.count) || 10);
+      if (list.length) rows.push(makeRow(key, s.title, list, list.length, "wide"));
+    } // single_image, ad_script, etc.: no aplican en la TV
+  }
+  return rows;
+}
+
+// Filas de una sección (Películas, Series, Animes, Doramas): lo reciente y una fila por género
+export function buildSectionRows({ content, key, rng = Math.random, limit = 20, maxGenres = 6, minPerGenre = 3 }) {
+  const items = content.filter((i) => inSection(i, key));
+  if (!items.length) return [];
+  const rows = [];
+  const recent = [...items].sort(byRecent);
+  rows.push(makeRow(`${key}:recent`, "Recién agregado", recent, limit));
+  const count = {};
+  items.forEach((i) => genreIds(i).forEach((g) => { if (GENRE_NAMES[g]) count[g] = (count[g] || 0) + 1; }));
+  Object.keys(count)
+    .filter((g) => count[g] >= minPerGenre)
+    .sort((a, b) => count[b] - count[a] || GENRE_NAMES[a].localeCompare(GENRE_NAMES[b], "es"))
+    .slice(0, maxGenres)
+    .forEach((g) => {
+      const all = items.filter((i) => genreIds(i).includes(Number(g)));
+      rows.push(makeRow(`${key}:g${g}`, GENRE_NAMES[g], shuffle(all, rng), limit, "poster", [...all].sort(byRecent)));
+    });
+  return rows;
+}
+
+// ¿Hay que cargar más tarjetas en la cuadrícula? (carga progresiva al acercarse al final)
+export function shouldLoadMore(focusIndex, shown, total, ahead = 12) {
+  return shown < total && focusIndex >= shown - ahead;
+}
