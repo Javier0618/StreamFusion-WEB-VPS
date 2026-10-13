@@ -174,6 +174,8 @@ function move(dir) {
 function showScreen(name) {
   ["browse", "grid", "detail", "player", "login"].forEach((s) => { $(`#screen-${s}`).hidden = s !== name; });
   state.screen = name;
+  // Android TV: mientras se reproduce, la app nativa captura el control y nos lo reenvía (sfNativeKey)
+  try { if (window.SFTV) window.SFTV.setPlayer(name === "player"); } catch {}
   $("#nav").hidden = !(name === "browse" || name === "grid");
   restoreFocus(name);
 }
@@ -578,6 +580,10 @@ function goBack() {
     default: return false;
   }
 }
+// Teclas del control reenviadas por MainActivity (acciones ya normalizadas: up/down/left/right/ok/...)
+window.sfNativeKey = (action) => {
+  if (state.screen === "player") onPlayerAction(String(action));
+};
 window.sfHandleBack = goBack; // la versión Android lo llama desde el botón Atrás del control
 
 document.addEventListener("keydown", (e) => {
