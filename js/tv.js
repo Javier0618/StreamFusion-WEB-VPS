@@ -555,10 +555,10 @@ function renderDetail() {
           const seen = isWatched(item.id, d.season, ep.episode_number);
           const here = prog && Number(prog.s) === d.season && Number(prog.e) === ep.episode_number;
           const pct = here ? core.progressPercent(prog) : 0;
+          const img = ep.still_path ? `<img src="${IMG}/w300${esc(ep.still_path)}" alt="" loading="lazy" decoding="async">` : `<span class="noimg">▶</span>`;
           return `<div class="ep focusable" data-kind="episode" data-season="${esc(d.season)}" data-episode="${esc(ep.episode_number)}" data-key="ep:${esc(d.season)}-${esc(ep.episode_number)}">
-            <div class="n">E${esc(ep.episode_number)}${seen ? '<span class="ok">✓</span>' : ""}</div>
-            <div class="t">${esc(ep.name || "")}</div>
-            ${pct > 0 ? `<div class="card-prog"><i style="width:${pct}%"></i></div>` : ""}
+            <div class="ep-img">${img}${pct > 0 ? `<div class="card-prog"><i style="width:${pct}%"></i></div>` : ""}</div>
+            <div class="ep-txt"><div class="n">E${esc(ep.episode_number)}${seen ? '<span class="ok">✓</span>' : ""}</div><div class="t">${esc(ep.name || "")}</div></div>
           </div>`;
         })
         .join("")}</div>`;
