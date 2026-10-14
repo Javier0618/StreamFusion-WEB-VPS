@@ -453,6 +453,23 @@ const translations = {
     "settings.saveButton": "Guardar Configuración",
     "settings.saveSuccess": "La configuración se ha guardado correctamente.",
     "settings.saveError": "No se pudo guardar la configuración.",
+    "page.loadingMore": "Cargando más...",
+    "management.noAccess": "No tienes permisos para acceder a la gestión.",
+    "management.manageModalSections": "Gestionar Secciones del Modal",
+    "content.noImportedContent": "Aún no has importado contenido.",
+    "content.adminOnly": "Solo administradores pueden acceder a esta sección.",
+    "content.loadError": "No se pudo cargar el contenido.",
+    "admin.notAvailable": "No disponible",
+    "stats.noAccess": "No tienes permisos para ver las estadísticas.",
+    "stats.loadError.title": "No se pudieron cargar las estadísticas",
+    "stats.loadError.text": "Revisa tu conexión e inténtalo de nuevo.",
+    "stats.empty.title": "Sin estadísticas todavía",
+    "stats.empty.text": "Cuando los usuarios abran títulos, aparecerán aquí.",
+    "connectedUsers.noAccess": "No tienes permisos para ver los usuarios conectados.",
+    "connectedUsers.loadError.title": "No se pudieron cargar los usuarios",
+    "connectedUsers.loadError.text": "Revisa tu conexión e inténtalo de nuevo.",
+    "connectedUsers.empty.title": "Nadie conectado ahora",
+    "connectedUsers.empty.text": "No hay usuarios activos en los últimos 5 minutos.",
   },
   "en-US": {
     "auth.loginTitle": "Login",
@@ -842,6 +859,9 @@ const ALL_CATEGORIES = [
   { key: "genres.war", icon: "fas fa-fighter-jet", genreId: 10752 },
   { key: "genres.western", icon: "fas fa-hat-cowboy", genreId: 37 },
 ];
+
+// Inyectar la pestaña "Portada" en Gestión ANTES de capturar los elementos del DOM
+sfInjectHomeContentManager();
 
 // DOM Elements - Authentication
 const authContainer = document.getElementById("auth-container");
@@ -1993,6 +2013,8 @@ function initEventListeners() {
           loadModalSections();
         } else if (tabName === "splash") {
           loadSplashConfigForm();
+        } else if (tabName === "home-content") {
+          sfLoadHomeContentManager();
         }
       }
     });
@@ -2032,6 +2054,8 @@ function initEventListeners() {
           loadModalSections();
         } else if (tabName === "splash") {
           loadSplashConfigForm();
+        } else if (tabName === "home-content") {
+          sfLoadHomeContentManager();
         }
       }
     });
@@ -2474,7 +2498,7 @@ async function handleLogout() {
     adminPanel.classList.remove("active");
     statsView.classList.remove("active");
     connectedUsersView.classList.remove("active");
-    managementPanel.style.display = "none";
+    managementPanel.classList.remove("active");
     loginForm.reset();
     registerForm.reset();
     loginError.style.display = "none";
@@ -2515,6 +2539,7 @@ function showUserProfile() {
   connectedUsersView.classList.remove("active");
 
   // Show profile page
+  sfEnterPanel("profile");
   userProfilePage.classList.add("active");
 
   // Update profile information
@@ -2538,6 +2563,10 @@ function showUserProfile() {
   profileSections.forEach((section) => section.classList.remove("active"));
   profileTabs[0].classList.add("active");
   profileSections[0].classList.add("active");
+  profileQuickActions.forEach((c) =>
+    c.classList.toggle("active", c.dataset.tab === "info"),
+  );
+  sfRenderProfileExtras();
 
   // Load user's my list
   loadUserMyList();
@@ -2648,7 +2677,7 @@ function loadUserMessages() {
               <span class="message-sender">${message.from === "admin" ? getText("user.messages.sender.admin") : message.from === currentUser.id ? getText("user.messages.sender.you") : getText("user.messages.sender.system")}</span>
               <span class="message-date">${messageDate.toLocaleString()}</span>
             </div>
-            <div class="message-content">${message.content}</div>
+            <div class="message-content">${sfEsc(message.content)}</div>
             ${
               canDelete
                 ? `
@@ -3005,12 +3034,16 @@ function showAdminPanel() {
   });
 
   // Show the correct panel
+  sfEnterPanel("admin");
   adminPanel.classList.add("active");
   managementPanel.classList.remove("active"); // Ensure management panel is hidden initially
 
   // Reset tabs
   adminTabs.forEach((tab) => tab.classList.remove("active"));
   adminTabs[0].classList.add("active");
+  adminQuickCards.forEach((c) =>
+    c.classList.toggle("active", c.dataset.tab === "users"),
+  );
   document.getElementById("users-section").style.display = "block";
   document.getElementById("admin-messages-section").style.display = "none";
   loadUsers();
@@ -3058,7 +3091,7 @@ function showStatsPanel() {
   searchResultsView.classList.remove("active");
   userProfilePage.classList.remove("active");
   adminPanel.classList.remove("active");
-  managementPanel.style.display = "none";
+  managementPanel.classList.remove("active");
   enEstrenoView.classList.remove("active");
   netflixView.classList.remove("active");
   disneyView.classList.remove("active");
@@ -3068,6 +3101,7 @@ function showStatsPanel() {
   connectedUsersView.classList.remove("active");
 
   // Show stats panel
+  sfEnterPanel("stats");
   statsView.classList.add("active");
 
   // Load stats content
@@ -3095,7 +3129,7 @@ function showConnectedUsersPanel() {
   searchResultsView.classList.remove("active");
   userProfilePage.classList.remove("active");
   adminPanel.classList.remove("active");
-  managementPanel.style.display = "none";
+  managementPanel.classList.remove("active");
   enEstrenoView.classList.remove("active");
   netflixView.classList.remove("active");
   disneyView.classList.remove("active");
@@ -3105,6 +3139,7 @@ function showConnectedUsersPanel() {
   statsView.classList.remove("active");
 
   // Show connected users panel
+  sfEnterPanel("connected-users");
   connectedUsersView.classList.add("active");
 
   // Load connected users content
@@ -3145,7 +3180,11 @@ async function loadStatsContent() {
 }
 
 // NEW: Render Stats Grid
-function renderStatsGrid(content) {
+function renderStatsGrid(content, fromFilter = false) {
+  if (!fromFilter) {
+    sfStatsAll = content;
+    sfRenderStatsHeader(content);
+  }
   statsGrid.innerHTML = "";
 
   if (content.length === 0) {
@@ -3178,9 +3217,9 @@ function renderStatsGrid(content) {
     card.innerHTML = `
       <img src="${posterPath}" alt="${title}" class="stats-poster">
       <div class="stats-position">${item.position}</div>
-      <div class="stats-click-count">${item.clickCount} Clicks</div>
+      <div class="stats-click-count"><i class="fas fa-mouse-pointer"></i> ${Number(item.clickCount || 0).toLocaleString()}</div>
       <div class="stats-info">
-        <h3 class="stats-title">${title}</h3>
+        <h3 class="stats-title">${sfEsc(title)}</h3>
         <div class="stats-meta">
           <span>${type}</span>
         </div>
@@ -3198,8 +3237,7 @@ function renderStatsGrid(content) {
     // Add event listeners for stats cards
     card.querySelector(".play-btn").addEventListener("click", (e) => {
       e.stopPropagation();
-      // No need to update click count again here, it's already tracked
-      window.open(`go:${item.posterId}`, "_blank");
+      showMovieDetailsModal(item.posterId, item.mediaType);
     });
 
     card.querySelector(".info-btn").addEventListener("click", (e) => {
@@ -3208,8 +3246,7 @@ function renderStatsGrid(content) {
     });
 
     card.addEventListener("click", () => {
-      // No need to update click count again here, it's already tracked
-      window.open(`go:${item.posterId}`, "_blank");
+      showMovieDetailsModal(item.posterId, item.mediaType);
     });
 
     statsGrid.appendChild(card);
@@ -3574,10 +3611,10 @@ function renderAdminUsers(usersToRender, append = false) {
 
     userCard.innerHTML = `
       <div class="user-card-header">
-        <div class="user-card-avatar">${user.name.charAt(0).toUpperCase()}</div>
+        <div class="user-card-avatar">${sfEsc(sfInitial(user.name))}</div>
         <div class="user-card-info">
-          <h4>${user.name}</h4>
-          <p>${user.email}</p>
+          <h4>${sfEsc(user.name || getText("admin.user"))}</h4>
+          <p>${sfEsc(user.email || "")}</p>
         </div>
       </div>
       <div class="user-card-body">
@@ -3586,7 +3623,7 @@ function renderAdminUsers(usersToRender, append = false) {
       </div>
       <div class="user-card-actions">
         <button class="admin-action-btn edit" data-id="${user.id}">${getText("actions.edit")}</button>
-        <button class="admin-action-btn message" data-id="${user.id}" data-name="${user.name}">${getText("actions.message")}</button>
+        <button class="admin-action-btn message" data-id="${user.id}" data-name="${sfEsc(user.name || "")}">${getText("actions.message")}</button>
         <button class="admin-action-btn delete" data-id="${user.id}">${getText("actions.delete")}</button>
       </div>
     `;
@@ -3729,15 +3766,15 @@ function loadAdminMessages() {
 
             messageItem.innerHTML = `
             <div class="message-header">
-              <span class="message-sender">${getText("admin.fromLabel")} ${message.userName || getText("admin.user")}</span>
+              <span class="message-sender">${getText("admin.fromLabel")} ${sfEsc(message.userName || getText("admin.user"))}</span>
               <span class="message-date">${messageDate.toLocaleString()}</span>
             </div>
-            <div class="message-content">${message.content}</div>
+            <div class="message-content">${sfEsc(message.content)}</div>
             <div class="message-actions">
               <button class="message-delete-btn" data-id="${message.id}">
                 <i class="fas fa-trash"></i>
               </button>
-              <button class="admin-action-btn message" data-id="${message.from}" data-name="${message.userName || getText("admin.user")}" style="margin-left: 10px; background-color: var(--accent-color); color: white; border-radius: 4px; padding: 4px 8px; font-size: 0.8rem;">
+              <button class="admin-action-btn message" data-id="${message.from}" data-name="${sfEsc(message.userName || getText("admin.user"))}">
                 <i class="fas fa-reply"></i> ${getText("actions.reply")}
               </button>
             </div>
@@ -4105,8 +4142,9 @@ async function handleDeleteUser() {
   }
 }
 
-async function loadConnectedUsers() {
-  showSpinner();
+async function loadConnectedUsers(silent = false) {
+  if (!silent) showSpinner();
+  sfStartConnectedAutoRefresh();
   try {
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000); // Last 5 minutes
     const q = query(
@@ -4136,6 +4174,7 @@ async function loadConnectedUsers() {
 
 function renderConnectedUsersGrid(users) {
   connectedUsersGrid.innerHTML = "";
+  sfRenderConnectedHeader(users.length);
 
   if (users.length === 0) {
     connectedUsersGrid.innerHTML = `
@@ -4159,14 +4198,14 @@ function renderConnectedUsersGrid(users) {
       : `${getText("admin.lastActivityLabel")} ${getText("admin.notAvailable")}`;
 
     const userCard = document.createElement("div");
-    userCard.className = "user-card"; // Reutiliza la clase user-card para el estilo
+    userCard.className = "user-card user-card-online"; // Reutiliza la clase user-card para el estilo
 
     userCard.innerHTML = `
       <div class="user-card-header">
-        <div class="user-card-avatar">${user.name.charAt(0).toUpperCase()}</div>
+        <div class="user-card-avatar">${sfEsc(sfInitial(user.name))}<span class="online-dot"></span></div>
         <div class="user-card-info">
-          <h4>${user.name}</h4>
-          <p>${user.email}</p>
+          <h4>${sfEsc(user.name || getText("admin.user"))}</h4>
+          <p>${sfEsc(user.email || "")}</p>
         </div>
       </div>
       <div class="user-card-body">
@@ -4851,9 +4890,7 @@ async function loadDeferredContent() {
       .filter((item) =>
         item.display_options?.home_sections?.includes("agregado"),
       )
-      .sort(
-        (a, b) => (b.imported_at?.seconds || 0) - (a.imported_at?.seconds || 0),
-      );
+      .sort((a, b) => sfAgregadoKey(b) - sfAgregadoKey(a));
     await renderContentSlider(
       document.getElementById("recently-added-slider"),
       recentlyAddedContent.slice(0, recienAgregado),
@@ -6552,10 +6589,22 @@ async function generateHeroContent() {
 
     const randomContent = shuffleArray(randomCandidates).slice(0, random);
 
-    let finalHeroContentSource = shuffleArray([
-      ...recentContent,
-      ...randomContent,
-    ]).slice(0, posters);
+    // Contenido marcado como "Slider Principal" siempre va primero
+    const pinnedSlider = allContent
+      .filter(
+        (item) =>
+          item.backdrop_path &&
+          item.display_options?.home_sections?.includes("slider"),
+      )
+      .sort((a, b) => sfHomeAddedKey(b, "slider") - sfHomeAddedKey(a, "slider"));
+    const pinnedIds = new Set(pinnedSlider.map((i) => i.id));
+    const fill = shuffleArray(
+      [...recentContent, ...randomContent].filter((i) => !pinnedIds.has(i.id)),
+    );
+    let finalHeroContentSource = [...pinnedSlider, ...fill].slice(
+      0,
+      Math.max(posters, Math.min(pinnedSlider.length, 20)),
+    );
 
     if (webSettings.displayLanguage === "en-US") {
       const englishContent = await fetchHeroDetailsInEnglish(
@@ -11969,4 +12018,514 @@ function sfWatchModal() {
 }
 if (!sfWatchModal()) {
   document.addEventListener("DOMContentLoaded", sfWatchModal);
+}
+
+
+// ================================================================
+// ████  UTILIDADES COMPARTIDAS (perfil, admin, gestión)  ████
+// ================================================================
+
+// Escapa texto antes de insertarlo como HTML (mensajes, nombres, títulos)
+function sfEsc(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function sfInitial(name) {
+  const n = String(name || "").trim();
+  return n ? n.charAt(0).toUpperCase() : "?";
+}
+
+// Aviso breve en pantalla. Se usaba en "Mi lista" pero no existía.
+// actionLabel/onAction permiten un botón "Deshacer".
+function showToast(message, type = "info", actionLabel = null, onAction = null) {
+  let host = document.getElementById("sf-toast-host");
+  if (!host) {
+    host = document.createElement("div");
+    host.id = "sf-toast-host";
+    document.body.appendChild(host);
+  }
+  const toast = document.createElement("div");
+  toast.className = `sf-toast sf-toast-${type}`;
+  const icon =
+    type === "success" ? "fa-check-circle" : type === "error" ? "fa-exclamation-circle" : "fa-info-circle";
+  toast.innerHTML = `<i class="fas ${icon}"></i><span>${sfEsc(message)}</span>`;
+  if (actionLabel && typeof onAction === "function") {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "sf-toast-action";
+    btn.textContent = actionLabel;
+    btn.addEventListener("click", () => {
+      onAction();
+      close();
+    });
+    toast.appendChild(btn);
+  }
+  host.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add("show"));
+  let closed = false;
+  function close() {
+    if (closed) return;
+    closed = true;
+    toast.classList.remove("show");
+    setTimeout(() => toast.remove(), 300);
+  }
+  setTimeout(close, actionLabel ? 6000 : 3200);
+  return close;
+}
+
+// Paneles abiertos fuera de navigateToView (perfil, admin, estadísticas,
+// conectados): limpia el estado para que la navegación siga funcionando.
+function sfEnterPanel(name) {
+  document.querySelectorAll(".page-view").forEach((v) => v.classList.remove("active"));
+  document.querySelectorAll(".nav-link, .bottom-nav-item").forEach((l) => l.classList.remove("active"));
+  try { exitCategoryHeader(); } catch {}
+  try { removeInfiniteScroll(); } catch {}
+  // Detener la TV si estaba sonando
+  const tvVideo = document.getElementById("tv-player-video");
+  if (tvVideo) { try { tvVideo.pause(); } catch {} }
+  const tvIframe = document.getElementById("tv-player-iframe");
+  if (tvIframe && tvIframe.src) tvIframe.src = "";
+  if (name !== "connected-users") sfStopConnectedAutoRefresh();
+  window.currentView = currentView = name;
+  window.scrollTo(0, 0);
+}
+
+// ---------- Mi perfil: resumen rápido ----------
+function sfRenderProfileExtras() {
+  if (!currentUser) return;
+  const header = document.querySelector("#user-profile-page .profile-header");
+  if (!header) return;
+  let chips = document.getElementById("sf-profile-chips");
+  if (!chips) {
+    chips = document.createElement("div");
+    chips.id = "sf-profile-chips";
+    chips.className = "sf-profile-chips";
+    header.querySelector(".profile-info")?.appendChild(chips);
+  }
+  const listCount = Array.isArray(currentUser.myList) ? currentUser.myList.length : 0;
+  const cwCount = (() => {
+    try { return JSON.parse(localStorage.getItem("sf_continue_watching") || "[]").length; }
+    catch { return 0; }
+  })();
+  const reg = currentUser.registeredAt?.toDate?.() || null;
+  chips.innerHTML = `
+    ${isAdmin ? `<span class="sf-chip sf-chip-admin"><i class="fas fa-shield-alt"></i> Administrador</span>` : ""}
+    <span class="sf-chip"><i class="fas fa-heart"></i> ${listCount} en Mi Lista</span>
+    <span class="sf-chip"><i class="fas fa-history"></i> ${cwCount} vistos recientemente</span>
+    ${reg ? `<span class="sf-chip"><i class="fas fa-calendar-alt"></i> Desde ${reg.toLocaleDateString()}</span>` : ""}`;
+}
+
+// ---------- Actividad del usuario (para "Conectado") ----------
+// Antes solo se actualizaba al iniciar sesión, así que casi nadie
+// aparecía como conectado. Ahora se renueva cada 3 min con la app visible.
+const SF_HEARTBEAT_MS = 3 * 60 * 1000;
+let sfLastHeartbeat = 0;
+function sfHeartbeat(force = false) {
+  if (!currentUser || document.hidden) return;
+  const now = Date.now();
+  if (!force && now - sfLastHeartbeat < SF_HEARTBEAT_MS - 5000) return;
+  sfLastHeartbeat = now;
+  updateDoc(doc(db, "users", currentUser.id), { lastActivity: serverTimestamp() }).catch(() => {});
+}
+setInterval(sfHeartbeat, SF_HEARTBEAT_MS);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) sfHeartbeat();
+});
+
+// ---------- Conectados: contador + refresco automático ----------
+let sfConnectedTimer = null;
+function sfStartConnectedAutoRefresh() {
+  if (sfConnectedTimer) return;
+  sfConnectedTimer = setInterval(() => {
+    if (!connectedUsersView.classList.contains("active") || !isAdmin) {
+      sfStopConnectedAutoRefresh();
+      return;
+    }
+    if (!document.hidden) loadConnectedUsers(true);
+  }, 30000);
+}
+function sfStopConnectedAutoRefresh() {
+  if (sfConnectedTimer) clearInterval(sfConnectedTimer);
+  sfConnectedTimer = null;
+}
+
+function sfRenderConnectedHeader(count) {
+  let bar = document.getElementById("sf-connected-bar");
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "sf-connected-bar";
+    bar.className = "sf-panel-bar";
+    connectedUsersGrid.parentElement.insertBefore(bar, connectedUsersGrid);
+  }
+  const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  bar.innerHTML = `
+    <div class="sf-panel-stat"><span class="sf-live-dot"></span><strong>${count}</strong> conectado${count === 1 ? "" : "s"} <small>(últimos 5 min)</small></div>
+    <div class="sf-panel-actions">
+      <small>Actualizado ${time} · se renueva cada 30 s</small>
+      <button type="button" class="sf-icon-btn" id="sf-connected-refresh" title="Actualizar"><i class="fas fa-sync-alt"></i></button>
+    </div>`;
+  bar.querySelector("#sf-connected-refresh").addEventListener("click", () => loadConnectedUsers());
+}
+
+// ---------- Estadísticas: resumen + buscador ----------
+let sfStatsAll = [];
+let sfStatsFilter = "all";
+function sfRenderStatsHeader(data) {
+  let bar = document.getElementById("sf-stats-bar");
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "sf-stats-bar";
+    bar.className = "sf-stats-bar";
+    statsGrid.parentElement.insertBefore(bar, statsGrid);
+  }
+  const total = data.reduce((s, i) => s + (Number(i.clickCount) || 0), 0);
+  const movies = data.filter((i) => i.mediaType === "movie").length;
+  const series = data.length - movies;
+  bar.innerHTML = `
+    <div class="sf-kpis">
+      <div class="sf-kpi"><span>Clicks totales</span><strong>${total.toLocaleString()}</strong></div>
+      <div class="sf-kpi"><span>Títulos</span><strong>${data.length.toLocaleString()}</strong></div>
+      <div class="sf-kpi"><span>Películas</span><strong>${movies.toLocaleString()}</strong></div>
+      <div class="sf-kpi"><span>Series</span><strong>${series.toLocaleString()}</strong></div>
+    </div>
+    <div class="sf-stats-tools">
+      <div class="sf-search"><i class="fas fa-search"></i><input type="search" id="sf-stats-search" placeholder="Buscar título..." autocomplete="off"></div>
+      <div class="sf-seg" id="sf-stats-seg">
+        <button type="button" data-f="all" class="${sfStatsFilter === "all" ? "active" : ""}">Todo</button>
+        <button type="button" data-f="movie" class="${sfStatsFilter === "movie" ? "active" : ""}">Películas</button>
+        <button type="button" data-f="tv" class="${sfStatsFilter === "tv" ? "active" : ""}">Series</button>
+      </div>
+    </div>`;
+  const input = bar.querySelector("#sf-stats-search");
+  const apply = () => {
+    const q = normalizeString(input.value.trim());
+    const filtered = sfStatsAll.filter(
+      (i) =>
+        (sfStatsFilter === "all" || i.mediaType === sfStatsFilter) &&
+        (!q || normalizeString(i.title || "").includes(q)),
+    );
+    renderStatsGrid(filtered, true);
+  };
+  input.addEventListener("input", debounce(apply, 200));
+  bar.querySelectorAll("#sf-stats-seg button").forEach((b) =>
+    b.addEventListener("click", () => {
+      sfStatsFilter = b.dataset.f;
+      bar.querySelectorAll("#sf-stats-seg button").forEach((x) => x.classList.toggle("active", x === b));
+      apply();
+    }),
+  );
+  if (sfStatsFilter !== "all") setTimeout(apply, 0);
+}
+
+
+// ================================================================
+// ████  GESTIÓN › PORTADA: Slider, En Estreno y Recién Agregado  ████
+// ================================================================
+// Se inyecta desde JS (no requiere cambiar el index.html).
+// Guarda en content/{id}.display_options.home_sections y, para ordenar,
+// display_options.home_added = { slider: ms, estreno: ms, agregado: ms }.
+
+const SF_HOME_SECTIONS = [
+  { key: "slider", label: "Slider Principal", icon: "fa-images", limitKey: null },
+  { key: "estreno", label: "En Estreno/Emisión", icon: "fa-fire", limitKey: "enEstreno" },
+  { key: "agregado", label: "Recién Agregado", icon: "fa-clock", limitKey: "recienAgregado" },
+];
+let sfHcActive = "slider";
+let sfHcRefreshTimer = null;
+let sfHcRefreshHero = false;
+
+function sfHomeAddedKey(item, key) {
+  const t = Number(item?.display_options?.home_added?.[key]);
+  return Number.isFinite(t) ? t : 0;
+}
+function sfAgregadoKey(item) {
+  return Math.max(sfHomeAddedKey(item, "agregado"), (item?.imported_at?.seconds || 0) * 1000);
+}
+
+// Se llama antes de capturar los elementos del DOM: así las pestañas
+// existentes de Gestión reconocen la nueva sin tocar su código.
+function sfInjectHomeContentManager() {
+  if (document.getElementById("home-content-section")) return;
+  const quick = document.querySelector("#management-panel .management-quick-actions");
+  const tabs = document.getElementById("management-tabs");
+  const content = document.querySelector("#management-panel .admin-content");
+  if (!quick || !content) return;
+
+  const card = document.createElement("div");
+  card.className = "management-quick-card";
+  card.dataset.tab = "home-content";
+  card.innerHTML = `
+    <div class="management-quick-icon" style="background: linear-gradient(135deg, #f6d365 0%, #fda085 100%);">
+      <i class="fas fa-star"></i>
+    </div>
+    <span>Portada</span>`;
+  const homeCard = quick.querySelector('[data-tab="home-sections"]');
+  quick.insertBefore(card, homeCard || null);
+
+  if (tabs) {
+    const tab = document.createElement("div");
+    tab.className = "admin-tab";
+    tab.dataset.tab = "home-content";
+    tab.textContent = "Contenido de Portada";
+    tabs.insertBefore(tab, tabs.querySelector('[data-tab="home-sections"]') || null);
+  }
+
+  const section = document.createElement("div");
+  section.className = "admin-section";
+  section.id = "home-content-section";
+  section.style.display = "none";
+  section.innerHTML = `
+    <h3>Contenido de la Página de Inicio</h3>
+    <p class="hc-intro">Revisa qué títulos aparecen en cada sección de la portada, quítalos o agrega nuevos buscando entre el contenido importado.</p>
+    <div class="hc-tabs" role="tablist" id="hc-tabs"></div>
+    <div class="hc-add">
+      <div class="sf-search"><i class="fas fa-plus"></i>
+        <input type="search" id="hc-search" placeholder="Buscar contenido importado para agregar..." autocomplete="off">
+      </div>
+      <div class="hc-results" id="hc-results" hidden></div>
+    </div>
+    <div class="hc-list-head">
+      <span id="hc-count"></span>
+      <div class="sf-search sf-search-sm"><i class="fas fa-filter"></i>
+        <input type="search" id="hc-filter" placeholder="Filtrar lista..." autocomplete="off">
+      </div>
+    </div>
+    <div class="hc-list" id="hc-list"></div>`;
+  const homeSection = document.getElementById("home-sections-section");
+  content.insertBefore(section, homeSection || null);
+
+  section.querySelector("#hc-search").addEventListener("input", (e) => sfHcRenderResults(e.target.value));
+  section.querySelector("#hc-filter").addEventListener("input", () => sfHcRenderList());
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest?.(".hc-add")) {
+      const r = document.getElementById("hc-results");
+      if (r) r.hidden = true;
+    }
+  });
+}
+
+function sfHcItems(key) {
+  const items = (allContent || []).filter((i) => i.display_options?.home_sections?.includes(key));
+  if (key === "estreno")
+    return items.sort((a, b) => new Date(b.release_date || 0) - new Date(a.release_date || 0));
+  if (key === "agregado") return items.sort((a, b) => sfAgregadoKey(b) - sfAgregadoKey(a));
+  return items.sort((a, b) => sfHomeAddedKey(b, key) - sfHomeAddedKey(a, key));
+}
+
+function sfLoadHomeContentManager() {
+  if (!isAdmin) return;
+  const tabsEl = document.getElementById("hc-tabs");
+  if (!tabsEl) return;
+  tabsEl.innerHTML = SF_HOME_SECTIONS.map(
+    (s) => `
+    <button type="button" role="tab" class="hc-tab ${s.key === sfHcActive ? "active" : ""}" data-key="${s.key}">
+      <i class="fas ${s.icon}"></i><span>${s.label}</span><b>${sfHcItems(s.key).length}</b>
+    </button>`,
+  ).join("");
+  tabsEl.querySelectorAll(".hc-tab").forEach((b) =>
+    b.addEventListener("click", () => {
+      sfHcActive = b.dataset.key;
+      document.getElementById("hc-filter").value = "";
+      sfLoadHomeContentManager();
+    }),
+  );
+  const search = document.getElementById("hc-search");
+  const sec = SF_HOME_SECTIONS.find((s) => s.key === sfHcActive);
+  search.placeholder = `Buscar contenido importado para agregar a "${sec.label}"...`;
+  if (search.value.trim()) sfHcRenderResults(search.value);
+  sfHcRenderList();
+}
+
+function sfHcMeta(item) {
+  const year = (item.release_date || item.first_air_date || "").split("-")[0];
+  const type = item.media_type === "movie" ? "Película" : "Serie";
+  return [type, year].filter(Boolean).join(" · ");
+}
+
+function sfHcPoster(item) {
+  return item.poster_path
+    ? `${IMG_BASE_URL}/w92${item.poster_path}`
+    : "https://via.placeholder.com/92x138?text=%3F";
+}
+
+function sfHcRenderList() {
+  const list = document.getElementById("hc-list");
+  const countEl = document.getElementById("hc-count");
+  if (!list) return;
+  const key = sfHcActive;
+  const sec = SF_HOME_SECTIONS.find((s) => s.key === key);
+  const all = sfHcItems(key);
+  const limit = sec.limitKey ? Number(webSettings.homepageSections?.[sec.limitKey]) || 20 : null;
+  const q = normalizeString(document.getElementById("hc-filter")?.value.trim() || "");
+
+  countEl.innerHTML =
+    `<strong>${all.length}</strong> título${all.length === 1 ? "" : "s"} en ${sec.label}` +
+    (limit ? ` <small>· la portada muestra los primeros ${limit}</small>` : ` <small>· siempre aparecen primero en el slider</small>`);
+
+  if (all.length === 0) {
+    list.innerHTML = `<div class="hc-empty"><i class="fas fa-inbox"></i><p>No hay contenido en esta sección.<br>Usa el buscador de arriba para agregar.</p></div>`;
+    return;
+  }
+
+  const rows = all
+    .map((item, idx) => ({ item, idx }))
+    .filter(({ item }) => !q || normalizeString(item.title || item.name || "").includes(q));
+
+  if (rows.length === 0) {
+    list.innerHTML = `<div class="hc-empty"><p>Ningún título coincide con el filtro.</p></div>`;
+    return;
+  }
+
+  list.innerHTML = rows
+    .map(({ item, idx }) => {
+      const hidden = limit && idx >= limit;
+      const noBackdrop = key === "slider" && !item.backdrop_path;
+      return `
+      <div class="hc-row ${hidden ? "hc-row-hidden" : ""}" data-id="${sfEsc(item.id)}">
+        <span class="hc-pos">${idx + 1}</span>
+        <img class="hc-poster" src="${sfHcPoster(item)}" alt="" loading="lazy">
+        <div class="hc-info">
+          <strong>${sfEsc(item.title || item.name || "Sin título")}</strong>
+          <small>${sfHcMeta(item)}</small>
+          ${hidden ? `<span class="hc-tag hc-tag-muted">Fuera del límite</span>` : ""}
+          ${noBackdrop ? `<span class="hc-tag hc-tag-warn">Sin imagen de fondo: no se mostrará</span>` : ""}
+        </div>
+        <button type="button" class="hc-btn hc-btn-remove" data-id="${sfEsc(item.id)}" title="Quitar de ${sec.label}">
+          <i class="fas fa-times"></i><span>Quitar</span>
+        </button>
+      </div>`;
+    })
+    .join("");
+
+  list.querySelectorAll(".hc-btn-remove").forEach((btn) =>
+    btn.addEventListener("click", async () => {
+      const item = allContent.find((c) => String(c.id) === btn.dataset.id);
+      if (!item) return;
+      btn.disabled = true;
+      const ok = await sfSetHomeSection(item, key, false);
+      if (ok) {
+        showToast(`"${item.title || item.name}" quitado de ${sec.label}`, "success", "Deshacer", () =>
+          sfSetHomeSection(item, key, true).then(() => sfLoadHomeContentManager()),
+        );
+        sfLoadHomeContentManager();
+      } else {
+        btn.disabled = false;
+      }
+    }),
+  );
+}
+
+function sfHcRenderResults(rawQuery) {
+  const box = document.getElementById("hc-results");
+  if (!box) return;
+  const q = normalizeString(String(rawQuery || "").trim());
+  if (q.length < 2) {
+    box.hidden = true;
+    box.innerHTML = "";
+    return;
+  }
+  const key = sfHcActive;
+  const sec = SF_HOME_SECTIONS.find((s) => s.key === key);
+  const matches = (allContent || [])
+    .filter((i) => {
+      const t = normalizeString(i.title || i.name || "");
+      const o = normalizeString(i.original_title || i.original_name || "");
+      return t.includes(q) || o.includes(q);
+    })
+    .slice(0, 15);
+
+  if (matches.length === 0) {
+    box.innerHTML = `<div class="hc-res-empty">Sin resultados en el contenido importado.<br><small>Si no está, impórtalo primero en la pestaña <b>Agregar</b>.</small></div>`;
+    box.hidden = false;
+    return;
+  }
+
+  box.innerHTML = matches
+    .map((item) => {
+      const already = item.display_options?.home_sections?.includes(key);
+      const noBackdrop = key === "slider" && !item.backdrop_path;
+      return `
+      <div class="hc-res" data-id="${sfEsc(item.id)}">
+        <img class="hc-poster" src="${sfHcPoster(item)}" alt="" loading="lazy">
+        <div class="hc-info">
+          <strong>${sfEsc(item.title || item.name || "Sin título")}</strong>
+          <small>${sfHcMeta(item)}${noBackdrop ? " · sin imagen de fondo" : ""}</small>
+        </div>
+        ${
+          already
+            ? `<span class="hc-tag hc-tag-ok"><i class="fas fa-check"></i> Ya está</span>`
+            : noBackdrop
+              ? `<span class="hc-tag hc-tag-warn">No apto</span>`
+              : `<button type="button" class="hc-btn hc-btn-add" data-id="${sfEsc(item.id)}"><i class="fas fa-plus"></i><span>Agregar</span></button>`
+        }
+      </div>`;
+    })
+    .join("");
+  box.hidden = false;
+
+  box.querySelectorAll(".hc-btn-add").forEach((btn) =>
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const item = allContent.find((c) => String(c.id) === btn.dataset.id);
+      if (!item) return;
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
+      const ok = await sfSetHomeSection(item, key, true);
+      if (ok) {
+        showToast(`"${item.title || item.name}" agregado a ${sec.label}`, "success");
+        sfLoadHomeContentManager();
+      } else {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fas fa-plus"></i><span>Agregar</span>`;
+      }
+    }),
+  );
+}
+
+async function sfSetHomeSection(item, key, on) {
+  if (!isAdmin) {
+    showToast("No tienes permisos de administrador.", "error");
+    return false;
+  }
+  const current = Array.isArray(item.display_options?.home_sections) ? item.display_options.home_sections : [];
+  const next = on ? Array.from(new Set([...current, key])) : current.filter((k) => k !== key);
+  const added = { ...(item.display_options?.home_added || {}) };
+  if (on) added[key] = Date.now();
+  else delete added[key];
+  try {
+    await updateDoc(doc(db, "content", String(item.id)), {
+      "display_options.home_sections": next,
+      "display_options.home_added": added,
+    });
+    item.display_options = { ...(item.display_options || {}), home_sections: next, home_added: added };
+    if (key === "slider") sfHcRefreshHero = true;
+    sfScheduleHomeRefresh();
+    return true;
+  } catch (err) {
+    console.error("Error actualizando la portada:", err);
+    showToast("No se pudo guardar el cambio. Inténtalo de nuevo.", "error");
+    return false;
+  }
+}
+
+// Agrupa varios cambios seguidos en una sola actualización de la portada
+function sfScheduleHomeRefresh() {
+  clearTimeout(sfHcRefreshTimer);
+  sfHcRefreshTimer = setTimeout(async () => {
+    try {
+      await loadDeferredContent();
+      if (sfHcRefreshHero) {
+        sfHcRefreshHero = false;
+        const heroContent = await generateHeroContent();
+        await renderHeroSlides(heroContent);
+      }
+    } catch (err) {
+      console.error("Error refrescando la portada:", err);
+    }
+  }, 900);
 }
