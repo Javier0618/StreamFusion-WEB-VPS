@@ -62,6 +62,11 @@ function saveProgress(id, data) {
   }
   writeJson(PROGRESS_KEY, all);
 }
+function removeProgress(id) {
+  const all = readJson(PROGRESS_KEY);
+  delete all[String(id)];
+  writeJson(PROGRESS_KEY, all);
+}
 function isWatched(id, s, e) {
   const w = readJson(WATCHED_KEY)[String(id)];
   return Array.isArray(w) && w.includes(`${s}-${e}`);
@@ -318,7 +323,8 @@ function cardHtml(item, rowId, kind, progress, idx) {
   const badge = progress && progress.s && progress.e ? `<span class="badge">T${esc(progress.s)} · E${esc(progress.e)}</span>` : "";
   const bar = pct > 0 ? `<div class="card-prog"><i style="width:${pct}%"></i></div>` : "";
   const extra = idx !== undefined ? ` data-idx="${idx}"` : "";
-  return `<div class="card${wide ? " wide" : ""} focusable" data-kind="card" data-id="${esc(item.id)}" data-key="${esc(rowId)}:${esc(item.id)}"${extra}>
+  const cont = rowId === "continue" ? " data-cont=\"1\"" : "";
+  return `<div class="card${wide ? " wide" : ""} focusable" data-kind="card" data-id="${esc(item.id)}" data-key="${esc(rowId)}:${esc(item.id)}"${extra}${cont}>
       <div class="poster">${poster}${badge}${bar}</div>
       <div class="card-title">${esc(item.title)}</div>
     </div>`;
@@ -330,7 +336,7 @@ function moreHtml(row) {
 }
 function rowHtml(r) {
   const cards = r.cards.map((c) => cardHtml(c.item, r.id, r.kind, c.progress)).join("");
-  return `<section class="row"><h2>${esc(r.title)}</h2><div class="cards">${cards}${r.all ? moreHtml(r) : ""}</div></section>`;
+  return `<section class="row"><h2>${esc(r.title)}${r.id === "continue" ? '<span class="rhint">Mantén OK para quitar</span>' : ""}</h2><div class="cards">${cards}${r.all ? moreHtml(r) : ""}</div></section>`;
 }
 
 // Filas de la sección actual (se calculan una vez por sesión; "Continuar viendo" siempre fresco)
@@ -529,6 +535,7 @@ function renderDetail() {
   if (!d.rel) d.rel = core.relatedItems(item, state.content, 20);
   if (!d.tab || (d.tab === "rel" && !d.rel.length)) d.tab = "eps";
   const target = playTarget(item);
+  const inContinue = !!core.buildContinueList(readJson(PROGRESS_KEY), state.byId, 100).some((c) => String(c.item.id) === String(item.id));
   const year = String(item.release_date || "").slice(0, 4);
   const rating = Number(item.vote_average) > 0 ? `<b>★ ${Number(item.vote_average).toFixed(1)}</b>` : "";
   const meta = [year ? esc(year) : "", rating, isTv ? "Serie" : "Película"].filter(Boolean).join(" &nbsp;·&nbsp; ");
@@ -580,6 +587,7 @@ function renderDetail() {
           <p class="overview">${esc(item.overview || "")}</p>
           <div class="actions">
             ${target ? `<button class="btn primary focusable" data-kind="play" data-key="play">${esc(target.label)}</button>` : ""}
+            ${inContinue ? '<button class="btn focusable" data-kind="remove-progress" data-key="rmprog">Quitar de Continuar viendo</button>' : ""}
             <button class="btn focusable" data-kind="back" data-key="back">Volver</button>
           </div>
         </div>
@@ -768,6 +776,45 @@ window.addEventListener("message", (ev) => {
   }
 });
 
+// ---------------- Confirmar (quitar de "Continuar viendo") ----------------
+function openConfirm(title, text, yesLabel, onYes) {
+  if (state.confirm) return;
+  state.confirm = { onYes, prev: nav.focus };
+  if (nav.focus) nav.focus.classList.remove("focused");
+  $("#confirm-title").textContent = title;
+  $("#confirm-text").textContent = text;
+  $("#confirm-yes").textContent = yesLabel;
+  $("#confirm").hidden = false;
+  focusConfirm($("#confirm-no")); // por defecto "Cancelar", para no borrar sin querer
+}
+function focusConfirm(btn) {
+  qa("#confirm .focusable").forEach((b) => b.classList.toggle("focused", b === btn));
+  state.confirm.cur = btn;
+}
+function closeConfirm(accept) {
+  const c = state.confirm;
+  if (!c) return;
+  state.confirm = null;
+  $("#confirm").hidden = true;
+  qa("#confirm .focusable").forEach((b) => b.classList.remove("focused"));
+  if (accept) c.onYes(); else if (c.prev && document.contains(c.prev)) setFocus(c.prev);
+}
+function askRemoveContinue(id, title) {
+  openConfirm("Quitar de Continuar viendo", `«${title}» dejará de aparecer en esta lista. Podrás volver a verlo cuando quieras.`, "Quitar", () => {
+    removeProgress(id);
+    toast("Quitado de Continuar viendo");
+    if (state.screen === "detail") { renderRows(); renderDetail(); restoreFocus("detail"); return; }
+    const cards = qa("#rows .cards")[0] && qa(".focusable", qa("#rows .cards")[0]);
+    const idx = Math.max(0, (cards || []).findIndex((c) => c.dataset.id === String(id)));
+    renderRows();
+    const row = qa("#rows .cards")[0];
+    const list = row ? qa(".focusable", row) : [];
+    const stillContinue = row && row.closest(".row").querySelector(".rhint");
+    const target = stillContinue && list.length ? list[Math.min(idx, list.length - 1)] : (list[0] || null);
+    if (target) setFocus(target); else restoreFocus("browse");
+  });
+}
+
 // ---------------- Acciones de la interfaz ----------------
 function activate(el) {
   if (!el) return;
@@ -786,6 +833,7 @@ function activate(el) {
     case "play": playFromDetail(); break;
     case "back": goBack(); break;
     case "season": selectSeason(Number(el.dataset.season)); break;
+    case "remove-progress": askRemoveContinue(state.detail.item.id, state.detail.item.title); break;
     case "dtab": state.detail.tab = el.dataset.tab; nav.memo.detail = `dtab:${el.dataset.tab}`; renderDetail(); restoreFocus("detail"); break;
     case "episode": startPlayback(state.detail.item, Number(el.dataset.season), Number(el.dataset.episode)); break;
     case "login": doLogin(); break;
@@ -795,6 +843,7 @@ function activate(el) {
 
 // Atrás. Devuelve true si la app lo consumió (false = en Inicio: que salga la app)
 function goBack() {
+  if (state.confirm) { closeConfirm(false); return true; }
   switch (state.screen) {
     case "player": {
       // Atrás con un menú abierto (servidores / calidad) o el aviso de siguiente episodio: lo cierra, no sale
@@ -829,6 +878,9 @@ function goBack() {
     }
     case "browse":
       if (state.section !== "inicio") { selectSection("inicio"); return true; }
+      // Tizen / webOS: en la pantalla principal, Atrás sale de la app
+      try { if (window.tizen && tizen.application) { tizen.application.getCurrentApplication().exit(); return true; } } catch {}
+      try { if (/Web0S|webOS/i.test(navigator.userAgent)) { window.close(); return true; } } catch {}
       return false;
     default: return false;
   }
@@ -841,7 +893,21 @@ window.sfNativeKey = (action) => {
 window.sfIsPlayer = () => state.screen === "player"; // MainActivity lo consulta cada ~0.4 s
 window.sfHandleBack = goBack; // la versión Android lo llama desde el botón Atrás del control
 
+let okHold = null; // OK sostenido sobre una tarjeta de "Continuar viendo"
+// Samsung Tizen: registrar teclas multimedia para recibirlas
+try {
+  if (window.tizen && tizen.tvinputdevice) ["MediaPlay", "MediaPause", "MediaPlayPause", "MediaRewind", "MediaFastForward", "MediaTrackNext", "MediaTrackPrevious"].forEach((k) => { try { tizen.tvinputdevice.registerKey(k); } catch {} });
+} catch {}
 document.addEventListener("keydown", (e) => {
+  if (state.confirm) { // el diálogo captura todas las teclas
+    const a = core.normalizeKey(e);
+    if (!a) return;
+    e.preventDefault();
+    if (a === "left" || a === "right" || a === "up" || a === "down") focusConfirm(state.confirm.cur === $("#confirm-yes") ? $("#confirm-no") : $("#confirm-yes"));
+    else if (a === "ok" && !e.repeat) closeConfirm(state.confirm.cur === $("#confirm-yes"));
+    else if (a === "back") closeConfirm(false);
+    return;
+  }
   if (state.screen === "search" && !e.ctrlKey && !e.metaKey && !e.altKey) {
     if (e.key === "Backspace") { e.preventDefault(); return typeKey("del"); }
     if (e.key.length === 1 && /[a-z0-9ñ]/i.test(e.key)) { e.preventDefault(); return typeKey("char", e.key.toUpperCase()); }
@@ -862,6 +928,16 @@ document.addEventListener("keydown", (e) => {
 
   e.preventDefault();
   if (state.screen === "player") { dbgState.src = "pagina"; return onPlayerAction(action); }
+  // Tarjeta de "Continuar viendo": OK corto abre; OK sostenido pregunta si quitarla
+  if (action === "ok" && nav.focus && nav.focus.dataset.cont) {
+    if (!e.repeat) okHold = { el: nav.focus, done: false };
+    else if (okHold && !okHold.done) {
+      okHold.done = true;
+      const it = state.byId.get(String(okHold.el.dataset.id));
+      if (it) askRemoveContinue(it.id, it.title);
+    }
+    return;
+  }
   if (action === "up" || action === "down" || action === "left" || action === "right") move(action);
   else if (action === "ok") activate(nav.focus);
   else if (action === "back") goBack();
@@ -912,5 +988,12 @@ async function boot() {
   }
 }
 
-window.__sfTv = { state, nav, move, openSearch, typeKey, heroShow, setFocus, openDetail, activate }; // para depurar desde la consola
+document.addEventListener("keyup", (e) => {
+  if (core.normalizeKey(e) !== "ok" || !okHold) return;
+  const h = okHold;
+  okHold = null;
+  if (!h.done && !state.confirm && state.screen === "browse" && h.el === nav.focus) activate(h.el);
+}, true);
+
+if (/[?&]debug\b/.test(location.search)) window.__sfTv = { state, nav, move, openSearch, typeKey, heroShow, setFocus, openDetail, activate }; // para depurar desde la consola
 boot();
