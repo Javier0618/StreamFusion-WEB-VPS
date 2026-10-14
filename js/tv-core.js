@@ -21,6 +21,8 @@ const KEY_BY_CODE = {
   13: "ok", 23: "ok",        // 23 = DPAD_CENTER de Android
   27: "back", 8: "back", 4: "back", // 4 = KEYCODE_BACK de Android
   85: "playpause", 126: "play", 127: "pause",
+  // Samsung Tizen / LG webOS
+  10009: "back", 461: "back", 415: "play", 19: "pause", 10252: "playpause", 412: "rewind", 417: "forward",
   89: "rewind", 90: "forward", 87: "next", 88: "prev",
 };
 
