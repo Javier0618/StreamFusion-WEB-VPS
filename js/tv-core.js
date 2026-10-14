@@ -318,3 +318,34 @@ export function buildSectionRows({ content, key, rng = Math.random, limit = 20, 
 export function shouldLoadMore(focusIndex, shown, total, ahead = 12) {
   return shown < total && focusIndex >= shown - ahead;
 }
+
+
+// ---------- Buscador ----------
+export function normText(v) {
+  return String(v == null ? "" : v)
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9 ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+// Devuelve los títulos que coinciden, mejores primero (empieza por > palabra que empieza > contiene).
+export function searchItems(content, query, limit = 60) {
+  const q = normText(query);
+  if (!q) return [];
+  const tokens = q.split(" ");
+  const out = [];
+  (content || []).forEach((item, order) => {
+    const name = normText(item && item.title);
+    if (!name) return;
+    let score = -1;
+    if (name === q) score = 0;
+    else if (name.startsWith(q)) score = 1;
+    else if (name.split(" ").some((w) => w.startsWith(q))) score = 2;
+    else if (name.includes(q)) score = 3;
+    else if (tokens.length > 1 && tokens.every((t) => name.includes(t))) score = 4;
+    if (score >= 0) out.push({ item, score, order });
+  });
+  out.sort((a, b) => a.score - b.score || a.order - b.order);
+  return out.slice(0, limit).map((x) => x.item);
+}
