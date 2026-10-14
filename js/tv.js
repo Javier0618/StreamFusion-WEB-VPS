@@ -158,9 +158,10 @@ function buildGroups(name) {
     }
     case "detail": {
       g.push({ id: "actions", els: live(qa("#screen-detail .actions .focusable")) });
-      g.push({ id: "seasons", els: live(qa("#screen-detail .seasons .focusable")) });
+      g.push({ id: "head", els: live(qa("#screen-detail .dhead .focusable")), row: true }); // pestañas + temporadas en una línea
       const eps = live(qa("#screen-detail .eps .focusable"));
       g.push({ id: "eps", els: eps, cols: colsOf(eps) });
+      g.push({ id: "rel", els: live(qa("#screen-detail .cards.rel .focusable")), row: true });
       break;
     }
     default:
@@ -191,8 +192,8 @@ function ensureVisible(el) {
     const name = state.screen;
     const row = el.parentNode;
     // fila de tarjetas: desplazamiento horizontal mínimo (queda un asomo de la siguiente tarjeta)
-    if (row && row.classList && row.classList.contains("cards")) {
-      const pad = (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16) * 3;
+    if (row && row.classList && (row.classList.contains("cards") || row.classList.contains("seasons"))) {
+      const pad = parseFloat(getComputedStyle(row).paddingLeft) || 0;
       const left = el.offsetLeft, right = left + el.offsetWidth;
       if (left - row.scrollLeft < pad) row.scrollLeft = Math.max(0, left - pad);
       else if (right - row.scrollLeft > row.clientWidth - pad) row.scrollLeft = right - row.clientWidth + pad;
@@ -215,13 +216,17 @@ function ensureVisible(el) {
       }
       if (inTop && bar) bar.classList.remove("solid");
     } else if (name === "detail") {
-      const body = $("#screen-detail .detail-body");
-      if (body) {
-        if (el.dataset.kind === "play" || el.dataset.kind === "back") body.scrollTop = 0;
-        else {
-          const r = el.getBoundingClientRect(), br = body.getBoundingClientRect();
-          body.scrollTop = Math.max(0, body.scrollTop + (r.top - br.top) - vh * 0.3);
-        }
+      // La ficha NO se desplaza: solo el cajón de episodios, y lo que sale queda recortado dentro del cajón
+      const box = el.closest(".eps");
+      if (box) {
+        // Se desplaza de a filas completas (nunca queda una fila cortada arriba)
+        const cs = getComputedStyle(box);
+        const pad = parseFloat(cs.paddingTop) || 0, gap = parseFloat(cs.rowGap) || 0;
+        const pitch = el.offsetHeight + gap;
+        const top = el.offsetTop, bottom = top + el.offsetHeight;
+        if (top - box.scrollTop < pad) box.scrollTop = Math.max(0, top - pad);
+        else if (bottom + pad - box.scrollTop > box.clientHeight) box.scrollTop = Math.ceil((bottom + pad - box.clientHeight) / pitch) * pitch;
+        box.classList.toggle("scrolled", box.scrollTop > 2); // difumina el borde superior cuando hay episodios ocultos arriba
       }
     } else if (name === "search") {
       const box = el.closest("#search-results");
@@ -521,6 +526,8 @@ function renderDetail() {
   if (isTv && !seasons.some((s) => Number(s.season_number) === d.season)) {
     d.season = prog && seasons.some((s) => Number(s.season_number) === Number(prog.s)) ? Number(prog.s) : Number(seasons[0].season_number);
   }
+  if (!d.rel) d.rel = core.relatedItems(item, state.content, 20);
+  if (!d.tab || (d.tab === "rel" && !d.rel.length)) d.tab = "eps";
   const target = playTarget(item);
   const year = String(item.release_date || "").slice(0, 4);
   const rating = Number(item.vote_average) > 0 ? `<b>★ ${Number(item.vote_average).toFixed(1)}</b>` : "";
@@ -530,42 +537,54 @@ function renderDetail() {
   const root = $("#screen-detail");
   root.style.backgroundImage = item.backdrop_path ? `url('${IMG}/w1280${esc(item.backdrop_path)}')` : "none";
 
-  let seasonsHtml = "", epsHtml = "";
+  const relCards = `<div class="cards rel">${d.rel.map((r) => cardHtml(r, "rel", "poster")).join("")}</div>`;
+  let panel = "";
   if (isTv) {
-    seasonsHtml = `<div class="seasons">${seasons
+    const tabs = d.rel.length
+      ? `<div class="dtabs"><div class="dtab focusable${d.tab === "eps" ? " sel" : ""}" data-kind="dtab" data-tab="eps" data-key="dtab:eps">Episodios</div>` +
+        `<div class="dtab focusable${d.tab === "rel" ? " sel" : ""}" data-kind="dtab" data-tab="rel" data-key="dtab:rel">Contenido relacionado</div></div>`
+      : `<div class="dtabs"><div class="dtitle">Episodios</div></div>`;
+    const chips = d.tab === "eps" ? `<div class="seasons">${seasons
       .map((s) => `<div class="chip focusable${Number(s.season_number) === d.season ? " sel" : ""}" data-kind="season" data-season="${esc(s.season_number)}" data-key="season:${esc(s.season_number)}">Temporada ${esc(s.season_number)}</div>`)
-      .join("")}</div>`;
-    const cur = seasons.find((s) => Number(s.season_number) === d.season);
-    epsHtml = `<div class="eps">${core.getValidEpisodes(cur.episodes)
-      .map((ep) => {
-        const seen = isWatched(item.id, d.season, ep.episode_number);
-        const here = prog && Number(prog.s) === d.season && Number(prog.e) === ep.episode_number;
-        const pct = here ? core.progressPercent(prog) : 0;
-        return `<div class="ep focusable" data-kind="episode" data-season="${esc(d.season)}" data-episode="${esc(ep.episode_number)}" data-key="ep:${esc(d.season)}-${esc(ep.episode_number)}">
+      .join("")}</div>` : "";
+    let body = "";
+    if (d.tab === "eps") {
+      const cur = seasons.find((s) => Number(s.season_number) === d.season);
+      body = `<div class="eps">${core.getValidEpisodes(cur.episodes)
+        .map((ep) => {
+          const seen = isWatched(item.id, d.season, ep.episode_number);
+          const here = prog && Number(prog.s) === d.season && Number(prog.e) === ep.episode_number;
+          const pct = here ? core.progressPercent(prog) : 0;
+          return `<div class="ep focusable" data-kind="episode" data-season="${esc(d.season)}" data-episode="${esc(ep.episode_number)}" data-key="ep:${esc(d.season)}-${esc(ep.episode_number)}">
             <div class="n">E${esc(ep.episode_number)}${seen ? '<span class="ok">✓</span>' : ""}</div>
             <div class="t">${esc(ep.name || "")}</div>
             ${pct > 0 ? `<div class="card-prog"><i style="width:${pct}%"></i></div>` : ""}
           </div>`;
-      })
-      .join("")}</div>`;
+        })
+        .join("")}</div>`;
+    } else body = relCards;
+    panel = `<div class="detail-panel"><div class="dhead">${tabs}${chips}</div>${body}</div>`;
+  } else if (d.rel.length) {
+    panel = `<div class="detail-panel"><div class="dhead"><div class="dtitle">Películas similares</div></div>${relCards}</div>`;
   }
 
   root.innerHTML = `
     <div class="detail-shade"></div>
     <div class="detail-body">
-      <div class="detail-poster"><div class="poster">${item.poster_path ? `<img src="${IMG}/w500${esc(item.poster_path)}" alt="">` : `<div class="noimg">${esc(item.title)}</div>`}</div></div>
-      <div class="detail-info">
-        <h1>${esc(item.title)}</h1>
-        <div class="meta">${meta}</div>
-        ${genres ? `<div class="genres">${genres}</div>` : ""}
-        <p class="overview">${esc(item.overview || "")}</p>
-        <div class="actions">
-          ${target ? `<button class="btn primary focusable" data-kind="play" data-key="play">${esc(target.label)}</button>` : ""}
-          <button class="btn focusable" data-kind="back" data-key="back">Volver</button>
+      <div class="detail-top">
+        <div class="detail-poster"><div class="poster">${item.poster_path ? `<img src="${IMG}/w500${esc(item.poster_path)}" alt="">` : `<div class="noimg">${esc(item.title)}</div>`}</div></div>
+        <div class="detail-info">
+          <h1>${esc(item.title)}</h1>
+          <div class="meta">${meta}</div>
+          ${genres ? `<div class="genres">${genres}</div>` : ""}
+          <p class="overview">${esc(item.overview || "")}</p>
+          <div class="actions">
+            ${target ? `<button class="btn primary focusable" data-kind="play" data-key="play">${esc(target.label)}</button>` : ""}
+            <button class="btn focusable" data-kind="back" data-key="back">Volver</button>
+          </div>
         </div>
-        ${seasonsHtml}${epsHtml}
-        <div class="detail-spacer"></div>
       </div>
+      ${panel}
     </div>`;
   nav.lastRow = null;
   invalidateNav();
@@ -574,8 +593,9 @@ function renderDetail() {
 function openDetail(id) {
   const item = state.byId.get(String(id));
   if (!item) return;
-  state.stack.push(state.screen);
-  state.detail = { item, season: null };
+  if (state.screen === "detail" && state.detail) (state.detailHist = state.detailHist || []).push(state.detail); // viene de "relacionado"
+  else { state.stack.push(state.screen); state.detailHist = []; }
+  state.detail = { item, season: null, tab: "eps" };
   nav.memo.detail = null;
   renderDetail();
   showScreen("detail");
@@ -766,6 +786,7 @@ function activate(el) {
     case "play": playFromDetail(); break;
     case "back": goBack(); break;
     case "season": selectSeason(Number(el.dataset.season)); break;
+    case "dtab": state.detail.tab = el.dataset.tab; nav.memo.detail = `dtab:${el.dataset.tab}`; renderDetail(); restoreFocus("detail"); break;
     case "episode": startPlayback(state.detail.item, Number(el.dataset.season), Number(el.dataset.episode)); break;
     case "login": doLogin(); break;
     case "retry": boot(); break;
@@ -783,6 +804,13 @@ function goBack() {
       return true;
     }
     case "detail": {
+      if (state.detailHist && state.detailHist.length) { // volver al título anterior
+        state.detail = state.detailHist.pop();
+        nav.memo.detail = null;
+        renderDetail();
+        showScreen("detail");
+        return true;
+      }
       const prev = state.stack.pop() || "browse";
       state.detail = null;
       if (prev === "browse") renderRows(); // refresca "Continuar viendo"
