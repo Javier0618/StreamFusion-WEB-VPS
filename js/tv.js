@@ -106,7 +106,10 @@ async function loadContent() {
 }
 
 // ---------------- Foco y navegación con el control ----------------
-const nav = { focus: null, memo: {} };
+// La navegación es por GRUPOS (fila de tarjetas, botones del banner, episodios...). Es más predecible
+// y más rápida que calcular distancias entre todos los elementos de la pantalla.
+const nav = { focus: null, memo: {}, groups: null, lastRow: null };
+const invalidateNav = () => { nav.groups = null; };
 
 function focusables(name = state.screen) {
   const roots = [$(`#screen-${name}`)];
@@ -115,26 +118,118 @@ function focusables(name = state.screen) {
   return roots.filter(Boolean).flatMap((r) => [...r.querySelectorAll(".focusable")]).filter((el) => el.getClientRects().length > 0);
 }
 
-// Mantiene a la vista lo enfocado: centra horizontalmente dentro de su fila y desplaza la pantalla
+const live = (els) => els.filter((el) => el.getClientRects().length > 0);
+const qa = (sel, root = document) => [...root.querySelectorAll(sel)];
+// columnas de una cuadrícula: cuántos elementos comparten la primera línea
+function colsOf(els) {
+  if (els.length < 2) return 1;
+  const top = els[0].offsetTop;
+  let n = 0;
+  while (n < els.length && els[n].offsetTop === top) n++;
+  return Math.max(1, n);
+}
+function navGroup() {
+  return { id: "nav", els: live([...qa("#tabs .focusable"), ...qa("#search-btn")]) };
+}
+function buildGroups(name) {
+  const g = [];
+  switch (name) {
+    case "browse": {
+      g.push(navGroup());
+      if (!$("#hero").hidden) g.push({ id: "hero", els: live(qa("#hero .focusable")) });
+      qa("#rows .cards").forEach((row, k) => g.push({ id: `row${k}`, els: live(qa(".focusable", row)), row: true }));
+      const loose = live(qa("#rows .login-box .focusable"));
+      if (loose.length) g.push({ id: "loose", els: loose });
+      break;
+    }
+    case "grid": {
+      g.push(navGroup());
+      const els = live(qa("#grid .focusable"));
+      g.push({ id: "grid", els, cols: colsOf(els) });
+      break;
+    }
+    case "search": {
+      const keys = live(qa("#keys .focusable")), keyx = live(qa("#keyx .focusable")), res = live(qa("#search-results .focusable"));
+      g.push(navGroup());
+      g.push({ id: "keys", els: keys, cols: 6, edge: { right: "results" } });
+      g.push({ id: "keyx", els: keyx, edge: { right: "results", down: null } });
+      g.push({ id: "results", els: res, cols: colsOf(res), edge: { up: "nav", left: "keys" } });
+      break;
+    }
+    case "detail": {
+      g.push({ id: "actions", els: live(qa("#screen-detail .actions .focusable")) });
+      g.push({ id: "seasons", els: live(qa("#screen-detail .seasons .focusable")) });
+      const eps = live(qa("#screen-detail .eps .focusable"));
+      g.push({ id: "eps", els: eps, cols: colsOf(eps) });
+      break;
+    }
+    default:
+      focusables(name).forEach((el, k) => g.push({ id: `f${k}`, els: [el] }));
+  }
+  return g.filter((x) => x.els.length);
+}
+const groupsNow = () => nav.groups || (nav.groups = buildGroups(state.screen));
+
+const centerOf = (el) => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, l: r.left, r: r.right }; };
+// El elemento del grupo más alineado con "ref" (por x o por y). En filas solo cuenta lo que se ve en pantalla.
+function nearest(els, ref, axis, onlyVisible) {
+  const c = centerOf(ref);
+  const vw = window.innerWidth || 960;
+  let best = null, bd = Infinity;
+  for (const el of els) {
+    const e = centerOf(el);
+    if (onlyVisible && (e.r < 0 || e.l > vw)) continue;
+    const d = Math.abs(axis === "y" ? e.y - c.y : e.x - c.x);
+    if (d < bd) { bd = d; best = el; }
+  }
+  return best || els[0];
+}
+
+// Mantiene a la vista lo enfocado, moviendo lo mínimo
 function ensureVisible(el) {
   try {
+    const name = state.screen;
     const row = el.parentNode;
-    if (row && row.classList && row.classList.contains("cards") && typeof el.offsetLeft === "number") {
-      row.scrollLeft = Math.max(0, el.offsetLeft - (row.clientWidth - el.offsetWidth) / 2);
+    // fila de tarjetas: desplazamiento horizontal mínimo (queda un asomo de la siguiente tarjeta)
+    if (row && row.classList && row.classList.contains("cards")) {
+      const pad = (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16) * 3;
+      const left = el.offsetLeft, right = left + el.offsetWidth;
+      if (left - row.scrollLeft < pad) row.scrollLeft = Math.max(0, left - pad);
+      else if (right - row.scrollLeft > row.clientWidth - pad) row.scrollLeft = right - row.clientWidth + pad;
     }
-    const screen = $(`#screen-${state.screen}`);
-    const bar = $("#nav");
-    if (!screen) return;
     const inTop = el.classList.contains("tab") || el.classList.contains("hbtn");
-    let top = 0;
-    if (!inTop && typeof screen.scrollTop === "number") {
-      const vh = window.innerHeight || 540;
-      const r = el.getBoundingClientRect();
-      const sr = screen.getBoundingClientRect();
-      top = Math.max(0, screen.scrollTop + (r.top - sr.top) - vh * 0.3);
+    const vh = window.innerHeight || 540;
+    const bar = $("#nav");
+
+    if (name === "browse" || name === "grid") {
+      const screen = $(`#screen-${name}`);
+      const holder = inTop ? null : el.closest(".row") || el;
+      if (inTop) { if (screen.scrollTop !== 0) screen.scrollTop = 0; nav.lastRow = null; }
+      else if (holder !== nav.lastRow || name === "grid") {
+        nav.lastRow = holder;
+        const r = holder.getBoundingClientRect();
+        const sr = screen.getBoundingClientRect();
+        const top = Math.max(0, screen.scrollTop + (r.top - sr.top) - vh * (name === "grid" ? 0.3 : 0.2));
+        screen.scrollTop = top;
+        if (bar) bar.classList.toggle("solid", top > 40);
+      }
+      if (inTop && bar) bar.classList.remove("solid");
+    } else if (name === "detail") {
+      const body = $("#screen-detail .detail-body");
+      if (body) {
+        if (el.dataset.kind === "play" || el.dataset.kind === "back") body.scrollTop = 0;
+        else {
+          const r = el.getBoundingClientRect(), br = body.getBoundingClientRect();
+          body.scrollTop = Math.max(0, body.scrollTop + (r.top - br.top) - vh * 0.3);
+        }
+      }
+    } else if (name === "search") {
+      const box = el.closest("#search-results");
+      if (box) {
+        const r = el.getBoundingClientRect(), br = box.getBoundingClientRect();
+        if (r.top < br.top + 8 || r.bottom > br.bottom - 8) box.scrollTop = Math.max(0, box.scrollTop + (r.top - br.top) - 40);
+      }
     }
-    if (state.screen === "browse" || state.screen === "grid") screen.scrollTop = inTop ? 0 : top;
-    if (bar) bar.classList.toggle("solid", !inTop && top > 40);
   } catch {}
 }
 
@@ -157,26 +252,55 @@ function restoreFocus(name) {
   if (!target) {
     if (name === "detail") target = list.find((el) => el.dataset.kind === "play") || list[0];
     else if (name === "browse") target = list.find((el) => el.dataset.kind === "hero-play") || list.find((el) => el.dataset.kind === "card") || list[0];
+    else if (name === "search") target = list.find((el) => el.dataset.kind === "key") || list[0];
     else target = list.find((el) => el.dataset.kind === "card") || list[0];
   }
   setFocus(target || null);
 }
+
 function move(dir) {
-  const list = focusables();
-  if (!list.length) return;
-  if (!nav.focus || !list.includes(nav.focus)) { setFocus(list[0]); return; }
-  const rect = (el) => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; };
-  const items = list.filter((el) => el !== nav.focus).map((el) => ({ id: el, ...rect(el) }));
-  const next = core.pickNext(rect(nav.focus), items, dir);
-  if (next) setFocus(next);
+  const groups = groupsNow();
+  if (!groups.length) return;
+  const gi = groups.findIndex((g) => nav.focus && g.els.includes(nav.focus));
+  if (gi < 0) { setFocus(groups[0].els[0]); return; }
+  const g = groups[gi], els = g.els, n = els.length, i = els.indexOf(nav.focus), cols = g.cols || 0;
+
+  if (dir === "left" || dir === "right") {
+    const j = i + (dir === "left" ? -1 : 1);
+    const rowEdge = cols ? (dir === "left" ? i % cols === 0 : i % cols === cols - 1) : false;
+    if (j >= 0 && j < n && !rowEdge) return setFocus(els[j]);
+    // En los extremos NO se pasa a otra fila/carrusel; solo hay salto lateral donde el grupo lo define (teclado ↔ resultados)
+    const link = g.edge && g.edge[dir];
+    const t = link && groups.find((x) => x.id === link);
+    if (t) setFocus(nearest(t.els, nav.focus, "y"));
+    return;
+  }
+
+  // arriba / abajo
+  if (cols > 1 || (cols === 1 && n > 1 && g.id === "grid")) {
+    const j = i + (dir === "down" ? cols : -cols);
+    if (j >= 0 && j < n) return setFocus(els[j]);
+    if (dir === "down" && Math.floor(i / cols) < Math.floor((n - 1) / cols)) return setFocus(els[n - 1]);
+  }
+  let target = null;
+  if (g.edge && dir in g.edge) target = g.edge[dir] ? groups.find((x) => x.id === g.edge[dir]) : null;
+  else target = groups[gi + (dir === "down" ? 1 : -1)];
+  if (!target) return;
+  let cand = target.els;
+  if (target.cols > 1) cand = dir === "down" ? cand.slice(0, target.cols) : cand.slice(Math.floor((cand.length - 1) / target.cols) * target.cols);
+  setFocus(nearest(cand, nav.focus, "x", !!target.row));
 }
 
 function showScreen(name) {
-  ["browse", "grid", "detail", "player", "login"].forEach((s) => { $(`#screen-${s}`).hidden = s !== name; });
+  ["browse", "grid", "search", "detail", "player", "login"].forEach((s) => { $(`#screen-${s}`).hidden = s !== name; });
   state.screen = name;
   // Android TV: mientras se reproduce, la app nativa captura el control y nos lo reenvía (sfNativeKey)
   try { if (window.SFTV) window.SFTV.setPlayer(name === "player"); } catch {}
-  $("#nav").hidden = !(name === "browse" || name === "grid");
+  $("#nav").hidden = !(name === "browse" || name === "grid" || name === "search");
+  $("#nav").classList.toggle("solid", name === "search");
+  const sb = $("#search-btn"); if (sb) sb.classList.toggle("sel", name === "search");
+  nav.lastRow = null;
+  invalidateNav();
   restoreFocus(name);
 }
 
@@ -184,7 +308,7 @@ function showScreen(name) {
 function cardHtml(item, rowId, kind, progress, idx) {
   const wide = kind === "wide";
   const img = wide && item.backdrop_path ? `${IMG}/w780${item.backdrop_path}` : item.poster_path ? `${IMG}/w342${item.poster_path}` : "";
-  const poster = img ? `<img src="${esc(img)}" alt="" loading="lazy">` : `<div class="noimg">${esc(item.title)}</div>`;
+  const poster = img ? `<img src="${esc(img)}" alt="" loading="lazy" decoding="async">` : `<div class="noimg">${esc(item.title)}</div>`;
   const pct = progress ? core.progressPercent(progress) : 0;
   const badge = progress && progress.s && progress.e ? `<span class="badge">T${esc(progress.s)} · E${esc(progress.e)}</span>` : "";
   const bar = pct > 0 ? `<div class="card-prog"><i style="width:${pct}%"></i></div>` : "";
@@ -225,6 +349,8 @@ function renderRows() {
   $("#rows").innerHTML = rows.length
     ? rows.map(rowHtml).join("")
     : `<div class="login-box"><h1>Sin contenido</h1><p>Esta sección todavía no tiene títulos con enlace.</p></div>`;
+  nav.lastRow = null;
+  invalidateNav();
 }
 
 // ---------------- Menú de secciones ----------------
@@ -233,6 +359,7 @@ function renderTabs() {
   $("#tabs").innerHTML = core.MAIN_SECTIONS.filter(([k]) => has(k))
     .map(([k, label]) => `<div class="tab focusable${k === state.section ? " sel" : ""}" data-kind="tab" data-section="${k}" data-key="tab:${k}">${esc(label)}</div>`)
     .join("");
+  invalidateNav();
 }
 function selectSection(key) {
   state.section = key;
@@ -244,7 +371,9 @@ function selectSection(key) {
   if (bar) bar.classList.remove("solid");
   const screen = $("#screen-browse");
   if (screen && typeof screen.scrollTop === "number") screen.scrollTop = 0;
-  restoreFocus("browse");
+  state.grid = null;
+  state.stack = [];
+  showScreen("browse"); // (también vuelve desde Buscar o Ver todo)
 }
 
 // ---------------- Banner principal (héroe) ----------------
@@ -264,9 +393,14 @@ function heroShow(i) {
   const a = $("#hero-bg-a"), b = $("#hero-bg-b");
   const useA = !a.classList.contains("on");
   const on = useA ? a : b, off = useA ? b : a;
-  on.style.backgroundImage = `url('${IMG}/w1280${esc(it.backdrop_path)}')`;
-  on.classList.add("on");
-  off.classList.remove("on");
+  const my = (state.heroSeq = (state.heroSeq || 0) + 1);
+  const swap = () => {
+    if (my !== state.heroSeq) return; // llegó tarde: ya hay otro título
+    on.style.backgroundImage = `url('${IMG}/w1280${esc(it.backdrop_path)}')`;
+    on.classList.add("on");
+    off.classList.remove("on");
+  };
+  if (it.backdrop_path) { const im = new Image(); im.onload = swap; im.onerror = swap; im.src = `${IMG}/w1280${it.backdrop_path}`; } else swap();
 
   const year = String(it.release_date || "").slice(0, 4);
   const rating = Number(it.vote_average) > 0 ? `<b>★ ${Number(it.vote_average).toFixed(1)}</b>` : "";
@@ -286,7 +420,10 @@ function setHero(items) {
   clearInterval(state.heroTimer);
   heroShow(0);
   if (items.length > 1) {
-    state.heroTimer = setInterval(() => { if (state.screen === "browse") heroShow(state.heroIdx + 1); }, HERO_SECONDS * 1000);
+    state.heroTimer = setInterval(() => {
+      const sc = $("#screen-browse");
+      if (state.screen === "browse" && sc && sc.scrollTop < 120) heroShow(state.heroIdx + 1); // si no se ve, no se gasta
+    }, HERO_SECONDS * 1000);
   }
 }
 
@@ -297,6 +434,7 @@ function appendGrid() {
   const batch = g.items.slice(g.shown, g.shown + GRID_STEP);
   $("#grid").insertAdjacentHTML("beforeend", batch.map((item, k) => cardHtml(item, "grid", "poster", null, g.shown + k)).join(""));
   g.shown += batch.length;
+  invalidateNav();
   $("#grid-count").textContent = `${g.shown} de ${g.items.length}`;
 }
 function openGrid(rowId) {
@@ -309,6 +447,51 @@ function openGrid(rowId) {
   nav.memo.grid = null;
   appendGrid();
   showScreen("grid");
+}
+
+// ---------------- Buscador ----------------
+const KEY_ROWS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890".split("");
+let searchTimer = null;
+function buildKeys() {
+  $("#keys").innerHTML = KEY_ROWS.map((ch) => `<div class="key focusable" data-kind="key" data-ch="${ch}" data-key="key:${ch}">${ch}</div>`).join("");
+  $("#keyx").innerHTML =
+    `<div class="key wide focusable" data-kind="key-space" data-key="key:space">Espacio</div>` +
+    `<div class="key wide focusable" data-kind="key-del" data-key="key:del">Borrar</div>` +
+    `<div class="key wide focusable" data-kind="key-clear" data-key="key:clear">Limpiar</div>`;
+}
+function renderSearch() {
+  const sr = state.search || (state.search = { q: "", results: [] });
+  $("#search-text").textContent = sr.q;
+  const box = $("#search-results");
+  box.innerHTML = sr.results.map((item, k) => cardHtml(item, "search", "poster", null, k)).join("");
+  box.scrollTop = 0;
+  $("#search-hint").textContent = !sr.q.trim() ? "Escribe para buscar películas, series, animes y doramas"
+    : sr.results.length ? `${sr.results.length} resultado${sr.results.length === 1 ? "" : "s"}` : `Sin resultados para «${sr.q.trim()}»`;
+  invalidateNav();
+}
+function runSearch() {
+  const sr = state.search;
+  sr.results = core.searchItems(state.content, sr.q, 60);
+  // se actualiza sin tocar el teclado (el foco no se pierde)
+  renderSearch();
+}
+function typeKey(action, ch) {
+  const sr = state.search || (state.search = { q: "", results: [] });
+  if (action === "char") { if (sr.q.length < 40) sr.q += ch; }
+  else if (action === "space") { if (sr.q && !sr.q.endsWith(" ")) sr.q += " "; }
+  else if (action === "del") sr.q = sr.q.slice(0, -1);
+  else if (action === "clear") sr.q = "";
+  $("#search-text").textContent = sr.q;
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(runSearch, 160); // espera un momento por si sigues escribiendo
+}
+function openSearch() {
+  if (state.screen === "search") return;
+  if (!state.search) state.search = { q: "", results: [] };
+  if (!$("#keys").children.length) buildKeys();
+  state.stack.push(state.screen);
+  renderSearch();
+  showScreen("search");
 }
 
 // ---------------- Detalle ----------------
@@ -381,8 +564,11 @@ function renderDetail() {
           <button class="btn focusable" data-kind="back" data-key="back">Volver</button>
         </div>
         ${seasonsHtml}${epsHtml}
+        <div class="detail-spacer"></div>
       </div>
     </div>`;
+  nav.lastRow = null;
+  invalidateNav();
 }
 
 function openDetail(id) {
@@ -568,6 +754,11 @@ function activate(el) {
   if (el.tagName === "INPUT") { el.focus(); return; }
   switch (el.dataset.kind) {
     case "tab": selectSection(el.dataset.section); break;
+    case "search": openSearch(); break;
+    case "key": typeKey("char", el.dataset.ch); break;
+    case "key-space": typeKey("space"); break;
+    case "key-del": typeKey("del"); break;
+    case "key-clear": typeKey("clear"); break;
     case "hero-play": playFromHero(); break;
     case "hero-info": { const it = currentHero(); if (it) openDetail(it.id); break; }
     case "card": openDetail(el.dataset.id); break;
@@ -603,6 +794,11 @@ function goBack() {
       state.grid = null;
       showScreen("browse");
       return true;
+    case "search": {
+      const prev = state.stack.pop() || "browse";
+      showScreen(prev);
+      return true;
+    }
     case "browse":
       if (state.section !== "inicio") { selectSection("inicio"); return true; }
       return false;
@@ -618,6 +814,10 @@ window.sfIsPlayer = () => state.screen === "player"; // MainActivity lo consulta
 window.sfHandleBack = goBack; // la versión Android lo llama desde el botón Atrás del control
 
 document.addEventListener("keydown", (e) => {
+  if (state.screen === "search" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (e.key === "Backspace") { e.preventDefault(); return typeKey("del"); }
+    if (e.key.length === 1 && /[a-z0-9ñ]/i.test(e.key)) { e.preventDefault(); return typeKey("char", e.key.toUpperCase()); }
+  }
   const action = core.normalizeKey(e);
   if (!action) return;
 
@@ -684,5 +884,5 @@ async function boot() {
   }
 }
 
-window.__sfTv = { state, nav, heroShow, setFocus, openDetail, activate }; // para depurar desde la consola
+window.__sfTv = { state, nav, move, openSearch, typeKey, heroShow, setFocus, openDetail, activate }; // para depurar desde la consola
 boot();
