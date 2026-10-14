@@ -85,6 +85,8 @@ export function routePlayerAction(action, ui, seekStep) {
     switch (action) {
       case "up": return { cmd: "menuMove", delta: -1 };
       case "down": return { cmd: "menuMove", delta: 1 };
+      case "left": return { cmd: "menuTab", delta: -1 };
+      case "right": return { cmd: "menuTab", delta: 1 };
       case "ok": return { cmd: "menuPick" };
       case "back": return { cmd: "menuClose" };
       default: return null;
@@ -98,8 +100,8 @@ export function routePlayerAction(action, ui, seekStep) {
       return { cmd: "toggle" };
     case "left": return seekStep ? { cmd: "seek", delta: -seekStep } : null;
     case "right": return seekStep ? { cmd: "seek", delta: seekStep } : null;
-    case "up": return { cmd: "menuOpen" }; // abre el menú de servidores
-    case "down": return { cmd: "hud" };
+    case "up": return { cmd: "menuOpen", kind: "servers" };   // ▲ servidores
+    case "down": return { cmd: "menuOpen", kind: "settings" }; // ▼ calidad / velocidad
     case "back": return u.next ? { cmd: "keepWatching" } : { exit: true };
     case "playpause": return { cmd: "toggle" };
     case "play": return { cmd: "play" };
