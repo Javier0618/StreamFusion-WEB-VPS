@@ -26,9 +26,9 @@ body {
 .brand .logo { height: 3.4rem; width: 3.4rem; margin: -.6rem -.3rem -.6rem 0; object-fit: contain; }
 .brand b { color: var(--accent); }
 #tabs { display: flex; gap: .4rem; }
-.search-tab { margin-left: auto; }
-.tab svg { width: 1.15rem; height: 1.15rem; fill: currentColor; vertical-align: -.2rem; margin-right: .4rem; }
-.tab { padding: .45rem 1.1rem; border-radius: 2rem; font-size: 1.05rem; font-weight: 600; color: var(--muted); transition: background .12s ease, color .12s ease; }
+.search-tab { margin-left: auto; display: flex; align-items: center; gap: .45rem; }
+.tab svg { flex: none; width: 1.15rem; height: 1.15rem; fill: currentColor; }
+.tab { white-space: nowrap; padding: .45rem 1.1rem; border-radius: 2rem; font-size: 1.05rem; font-weight: 600; color: var(--muted); transition: background .12s ease, color .12s ease; }
 .tab.sel { color: var(--text); box-shadow: inset 0 -.18rem 0 var(--accent); border-radius: 0; padding-bottom: .4rem; }
 .tab.focused { color: #fff; background: rgba(255,255,255,.18); box-shadow: 0 0 0 .16rem #fff; border-radius: 2rem; }
 
@@ -91,29 +91,39 @@ body {
 .grid { display: flex; flex-wrap: wrap; gap: 1.5rem 1.2rem; padding: 1rem 3rem 8rem 3rem; }
 .grid .card { width: 8rem; }
 
-/* ---------- Detalle ---------- */
+/* ---------- Detalle (todo fijo; solo se desplaza el cajón de episodios) ---------- */
 #screen-detail { background-size: cover; background-position: center top; }
-.detail-shade { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(90deg, rgba(10,15,26,.97) 32%, rgba(10,15,26,.5)), linear-gradient(rgba(10,15,26,0) 55%, var(--bg)); }
-.detail-body { position: absolute; top: 0; left: 0; right: 0; bottom: 0; padding: 3rem 3rem 0 3rem; display: flex; align-items: flex-start; gap: 2rem; overflow-y: hidden; scroll-behavior: auto; }
-.detail-spacer { height: 14rem; }
-.detail-poster { flex: none; width: 12rem; }
+.detail-shade { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(90deg, rgba(10,15,26,.97) 32%, rgba(10,15,26,.55)), linear-gradient(rgba(10,15,26,0) 45%, var(--bg)); }
+.detail-body { position: absolute; top: 0; left: 0; right: 0; bottom: 0; padding: 2.4rem 3rem 1rem 3rem; display: flex; flex-direction: column; gap: .9rem; overflow: hidden; }
+.detail-top { flex: none; display: flex; gap: 1.8rem; }
+.detail-poster { flex: none; width: 7.2rem; }
 .detail-info { flex: 1; min-width: 0; }
-.detail-info h1 { font-size: 2.4rem; line-height: 1.08; margin-bottom: .45rem; }
-.meta { color: var(--muted); font-size: .98rem; margin-bottom: .35rem; }
+.detail-info h1 { font-size: 2.1rem; line-height: 1.08; margin-bottom: .35rem; }
+.meta { color: var(--muted); font-size: .98rem; margin-bottom: .3rem; }
 .meta b { color: #f7c948; }
-.genres { color: var(--accent); font-size: .92rem; font-weight: 600; margin-bottom: .7rem; }
-.overview { font-size: 1rem; max-width: 42rem; margin-bottom: 1.1rem; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
-.actions { display: flex; gap: 1rem; margin-bottom: 1.2rem; }
-.seasons { display: flex; flex-wrap: wrap; gap: .7rem; margin-bottom: .9rem; }
-.chip { flex: none; padding: .45rem 1.1rem; border-radius: 2rem; background: var(--panel2); font-weight: 700; font-size: .95rem; }
+.genres { color: var(--accent); font-size: .92rem; font-weight: 600; margin-bottom: .5rem; }
+.overview { font-size: .98rem; max-width: 46rem; margin-bottom: .8rem; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.actions { display: flex; gap: 1rem; }
+.detail-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.dhead { flex: none; display: flex; align-items: center; gap: 1.6rem; margin-bottom: .5rem; min-height: 2.6rem; }
+.dtabs { display: flex; gap: 1.4rem; flex: none; }
+.dtab, .dtitle { padding: .25rem .5rem; font-weight: 700; font-size: 1.2rem; color: var(--muted); border-bottom: .18rem solid transparent; }
+.dtitle { color: var(--text); }
+.dtab.sel { color: var(--text); border-bottom-color: var(--accent); }
+.dtab.focused { color: #fff; border-radius: .3rem; box-shadow: 0 0 0 .2rem #fff; }
+.seasons { position: relative; display: flex; gap: .6rem; overflow: hidden; padding: .3rem; min-width: 0; flex: 1; }
+.chip { flex: none; padding: .4rem 1rem; border-radius: 2rem; background: var(--panel2); font-weight: 700; font-size: .92rem; white-space: nowrap; }
 .chip.sel { background: var(--accent); color: #fff; }
 .chip.focused, .ep.focused, .field.focused { box-shadow: 0 0 0 .2rem #fff; }
-.eps { display: flex; flex-wrap: wrap; gap: .8rem; }
-.ep { position: relative; width: 11.5rem; padding: .7rem .9rem; border-radius: .5rem; background: var(--panel); overflow: hidden; }
+.eps { position: relative; flex: 1; min-height: 0; overflow: hidden; display: grid; grid-template-columns: repeat(4, 1fr); gap: .7rem; padding: .3rem; align-content: start; }
+.eps.scrolled { -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 1.1rem); mask-image: linear-gradient(to bottom, transparent 0, #000 1.1rem); }
+.ep { position: relative; padding: .6rem .9rem; border-radius: .5rem; background: rgba(19,27,43,.92); overflow: hidden; min-height: 3.6rem; }
 .ep .n { font-weight: 800; font-size: 1.05rem; }
 .ep .t { font-size: .8rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ep .ok { position: absolute; top: .45rem; right: .6rem; color: #4ade80; font-weight: 800; }
 .ep .card-prog { height: .25rem; }
+.detail-panel .cards { margin: 0 -3rem; padding-top: .7rem; padding-bottom: .5rem; }
+.detail-panel .cards .card { width: 7.4rem; }
 
 /* ---------- Inicio de sesión ---------- */
 .login-box { width: 26rem; margin: 7rem auto 0; display: flex; flex-direction: column; gap: 1rem; }
