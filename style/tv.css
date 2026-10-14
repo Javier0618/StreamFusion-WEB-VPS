@@ -115,12 +115,16 @@ body {
 .chip { flex: none; padding: .4rem 1rem; border-radius: 2rem; background: var(--panel2); font-weight: 700; font-size: .92rem; white-space: nowrap; }
 .chip.sel { background: var(--accent); color: #fff; }
 .chip.focused, .ep.focused, .field.focused { box-shadow: 0 0 0 .2rem #fff; }
-.eps { position: relative; flex: 1; min-height: 0; overflow: hidden; display: grid; grid-template-columns: repeat(4, 1fr); gap: .7rem; padding: .3rem; align-content: start; }
+.eps { position: relative; flex: 1; min-height: 0; overflow: hidden; display: grid; grid-template-columns: repeat(3, 1fr); gap: .7rem; padding: .3rem; align-content: start; }
 .eps.scrolled { -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 1.1rem); mask-image: linear-gradient(to bottom, transparent 0, #000 1.1rem); }
-.ep { position: relative; padding: .6rem .9rem; border-radius: .5rem; background: rgba(19,27,43,.92); overflow: hidden; min-height: 3.6rem; }
+.ep { position: relative; display: flex; align-items: center; gap: .75rem; padding: .35rem .8rem .35rem .35rem; border-radius: .5rem; background: rgba(19,27,43,.92); overflow: hidden; height: 4.2rem; }
+.ep-img { position: relative; flex: none; width: 6.4rem; height: 3.6rem; border-radius: .35rem; overflow: hidden; background: #19233a; }
+.ep-img img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
+.ep-img .noimg { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; color: var(--muted); }
+.ep-txt { min-width: 0; }
 .ep .n { font-weight: 800; font-size: 1.05rem; }
-.ep .t { font-size: .8rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ep .ok { position: absolute; top: .45rem; right: .6rem; color: #4ade80; font-weight: 800; }
+.ep .t { font-size: .8rem; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.25; }
+.ep .ok { margin-left: .4rem; color: #4ade80; font-weight: 800; }
 .ep .card-prog { height: .25rem; }
 .detail-panel .cards { margin: 0 -3rem; padding-top: .7rem; padding-bottom: .5rem; }
 .detail-panel .cards .card { width: 7.4rem; }
