@@ -408,9 +408,7 @@ function playFromHero() {
   if (!it) return;
   const t = playTarget(it);
   if (!t) return openDetail(it.id);
-  state.stack.push(state.screen);
-  state.detail = { item: it, season: t.season };
-  renderDetail();
+  state.detail = null; // al salir del reproductor se vuelve al Inicio, no a la ficha
   startPlayback(it, t.season, t.episode);
 }
 
@@ -486,12 +484,31 @@ function applyPendingSeek() {
   state.pendingSeek = null;
 }
 
+// Franja de diagnóstico (arriba a la izquierda, solo en el reproductor). Ponla en false cuando todo funcione.
+const SF_DEBUG = true;
+const dbgState = { key: "-", src: "-", bridge: "sin señal del reproductor", cmd: "-" };
+function dbgRender() {
+  if (!SF_DEBUG) return;
+  let el = document.getElementById("tv-debug");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "tv-debug";
+    el.style.cssText = "position:fixed;left:8px;top:8px;z-index:2147483647;background:rgba(0,0,0,.75);color:#7CFC9A;" +
+      "font:14px/1.4 monospace;padding:6px 10px;border-radius:6px;pointer-events:none;max-width:60vw";
+    document.body.appendChild(el);
+  }
+  el.hidden = state.screen !== "player";
+  el.textContent = `tecla: ${dbgState.key} (${dbgState.src}) | puente: ${dbgState.bridge} | orden: ${dbgState.cmd}`;
+}
+setInterval(dbgRender, 500);
+
 // Qué hace cada botón del control con el reproductor en pantalla
 const accel = core.createSeekAccel();
 function onPlayerAction(action) {
   if (!action || !state.play) return;
   const step = action === "left" || action === "right" ? accel(performance.now()) : 0;
   const r = core.routePlayerAction(action, state.ui, step);
+  dbgState.key = action; dbgState.cmd = r ? (r.cmd || (r.exit ? "salir" : r.app) || "-") : "nada"; dbgRender();
   if (!r) return;
   if (r.exit) return closePlayer();
   if (r.app === "next") return goNext();
@@ -509,6 +526,7 @@ window.addEventListener("message", (ev) => {
   const dur = Number(d.duration);
   const hasDur = Number.isFinite(dur) && dur > 0;
   const p = state.play;
+  dbgState.bridge = `${d.event} t=${Number.isFinite(t) ? Math.round(t) : "?"}s${state.ui && state.ui.adSkip ? " [anuncio-omitir]" : ""}`;
 
   switch (d.event) {
     case "ready":
@@ -534,6 +552,7 @@ window.addEventListener("message", (ev) => {
       state.ui = d.ui && typeof d.ui === "object" ? d.ui : {};
       break;
     case "key": // tecla pulsada DENTRO del reproductor, reenviada por el puente
+      dbgState.src = "puente";
       onPlayerAction(core.normalizeKey({ key: d.key, keyCode: d.keyCode }));
       break;
   }
@@ -582,6 +601,7 @@ function goBack() {
 }
 // Teclas del control reenviadas por MainActivity (acciones ya normalizadas: up/down/left/right/ok/...)
 window.sfNativeKey = (action) => {
+  dbgState.src = "nativa";
   if (state.screen === "player") onPlayerAction(String(action));
 };
 window.sfIsPlayer = () => state.screen === "player"; // MainActivity lo consulta cada ~0.4 s
@@ -603,7 +623,7 @@ document.addEventListener("keydown", (e) => {
   }
 
   e.preventDefault();
-  if (state.screen === "player") return onPlayerAction(action);
+  if (state.screen === "player") { dbgState.src = "pagina"; return onPlayerAction(action); }
   if (action === "up" || action === "down" || action === "left" || action === "right") move(action);
   else if (action === "ok") activate(nav.focus);
   else if (action === "back") goBack();
