@@ -81,6 +81,15 @@ export function createSeekAccel() {
 //            null → nada
 export function routePlayerAction(action, ui, seekStep) {
   const u = ui || {};
+  if (u.menu) { // menú de servidores abierto: el control lo recorre
+    switch (action) {
+      case "up": return { cmd: "menuMove", delta: -1 };
+      case "down": return { cmd: "menuMove", delta: 1 };
+      case "ok": return { cmd: "menuPick" };
+      case "back": return { cmd: "menuClose" };
+      default: return null;
+    }
+  }
   switch (action) {
     case "ok":
       if (u.skipIntro) return { cmd: "skipIntro" };
@@ -89,7 +98,7 @@ export function routePlayerAction(action, ui, seekStep) {
       return { cmd: "toggle" };
     case "left": return seekStep ? { cmd: "seek", delta: -seekStep } : null;
     case "right": return seekStep ? { cmd: "seek", delta: seekStep } : null;
-    case "up":
+    case "up": return { cmd: "menuOpen" }; // abre el menú de servidores
     case "down": return { cmd: "hud" };
     case "back": return u.next ? { cmd: "keepWatching" } : { exit: true };
     case "playpause": return { cmd: "toggle" };
