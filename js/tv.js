@@ -485,7 +485,7 @@ function applyPendingSeek() {
 }
 
 // Franja de diagnóstico (arriba a la izquierda, solo en el reproductor). Ponla en false cuando todo funcione.
-const SF_DEBUG = true;
+const SF_DEBUG = false;
 const dbgState = { key: "-", src: "-", bridge: "sin señal del reproductor", cmd: "-" };
 function dbgRender() {
   if (!SF_DEBUG) return;
@@ -547,6 +547,10 @@ window.addEventListener("message", (ev) => {
     case "next":
       if (p.type === "tv") markWatched(p.id, p.season, p.episode);
       goNext();
+      break;
+    case "menu":
+      dbgState.bridge = d.count < 0 ? "no encontre el icono del menu" : `menu: ${d.count} servidores`;
+      if (d.count <= 0) toast(d.count < 0 ? "No hay menú de servidores" : "No hay otros servidores");
       break;
     case "ui":
       state.ui = d.ui && typeof d.ui === "object" ? d.ui : {};
