@@ -584,6 +584,7 @@ function goBack() {
 window.sfNativeKey = (action) => {
   if (state.screen === "player") onPlayerAction(String(action));
 };
+window.sfIsPlayer = () => state.screen === "player"; // MainActivity lo consulta cada ~0.4 s
 window.sfHandleBack = goBack; // la versión Android lo llama desde el botón Atrás del control
 
 document.addEventListener("keydown", (e) => {
