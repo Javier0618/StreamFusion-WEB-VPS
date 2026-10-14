@@ -9897,6 +9897,20 @@ const swipeNavigation = {
       return;
     }
 
+    // Solo deslizar entre secciones si estamos en una de ellas (Inicio,
+    // Películas, Series, Animes, Doramas). En Perfil, Gestión, Admin,
+    // Estadísticas, Conectados, búsquedas, etc. el gesto no hace nada.
+    const activeView = document.querySelector(".page-view.active");
+    const mainViews = ["home", "movies", "series", "animes", "doramas"];
+    if (
+      !activeView ||
+      !this.sections.includes(activeView.id) ||
+      (typeof currentView !== "undefined" && !mainViews.includes(currentView))
+    ) {
+      this.isTouchingCategory = true;
+      return;
+    }
+
     // Solo registrar si el usuario toca con un dedo
     if (e.touches.length !== 1) return;
 
