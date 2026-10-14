@@ -9,8 +9,9 @@
   <body>
     <div id="app">
       <nav id="nav">
-        <div class="brand">Stream<b>Fusion</b></div>
+        <div class="brand"><img class="logo" src="https://raw.githubusercontent.com/Javier0618/Imagenes/refs/heads/main/SFusionLogo.png" alt="" onerror="this.style.display='none'"><span>Stream<b>Fusion</b></span></div>
         <div id="tabs"></div>
+        <div id="search-btn" class="tab focusable search-tab" data-kind="search" data-key="tab:search"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 14h-.8l-.3-.3A6.5 6.5 0 1 0 14 15.5l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>Buscar</div>
       </nav>
 
       <!-- Inicio y secciones: banner principal + filas -->
@@ -38,6 +39,21 @@
       <section id="screen-grid" class="screen" hidden>
         <div class="grid-head"><h1 id="grid-title"></h1><span id="grid-count"></span></div>
         <div id="grid" class="grid"></div>
+      </section>
+
+      <!-- Buscador: teclado en pantalla + resultados -->
+      <section id="screen-search" class="screen" hidden>
+        <div class="search-wrap">
+          <div class="search-left">
+            <div class="search-q"><span id="search-text"></span><i class="caret"></i></div>
+            <div id="keys" class="keys"></div>
+            <div id="keyx" class="keyx"></div>
+          </div>
+          <div class="search-right">
+            <div id="search-hint" class="search-hint"></div>
+            <div id="search-results" class="grid search-grid"></div>
+          </div>
+        </div>
       </section>
 
       <section id="screen-detail" class="screen" hidden></section>
