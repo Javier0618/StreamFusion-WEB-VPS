@@ -584,7 +584,13 @@ function activate(el) {
 // Atrás. Devuelve true si la app lo consumió (false = en Inicio: que salga la app)
 function goBack() {
   switch (state.screen) {
-    case "player": closePlayer(); return true;
+    case "player": {
+      // Atrás con un menú abierto (servidores / calidad) o el aviso de siguiente episodio: lo cierra, no sale
+      const r = core.routePlayerAction("back", state.ui, 0);
+      if (r && r.cmd) { postToPlayer({ sf: "cmd", ...r }); return true; }
+      closePlayer();
+      return true;
+    }
     case "detail": {
       const prev = state.stack.pop() || "browse";
       state.detail = null;
