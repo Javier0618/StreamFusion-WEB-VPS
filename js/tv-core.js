@@ -264,7 +264,7 @@ export function buildContinueRow(progress, byId, limit = 20) {
 }
 
 // Filas del Inicio: En estreno, Recién agregado y las secciones de tu panel (colección home_sections)
-export function buildHomeRows({ content, sections = [], rng = Math.random, limit = 20 }) {
+export function buildHomeRows({ content, sections = [], rng = Math.random, limit = 20, extra = true, extraGenres = 10 }) {
   const rows = [];
   const flagged = (flag) => content.filter((i) => i.display_options && Array.isArray(i.display_options.home_sections) && i.display_options.home_sections.includes(flag));
   const estreno = flagged("estreno").sort(byRelease);
@@ -291,11 +291,31 @@ export function buildHomeRows({ content, sections = [], rng = Math.random, limit
       if (list.length) rows.push(makeRow(key, s.title, list, list.length, "wide"));
     } // single_image, ad_script, etc.: no aplican en la TV
   }
+
+  // Más categorías automáticas (lo que ya configuraste en tu panel no se repite)
+  if (extra) {
+    const usedViews = new Set(sections.filter((s) => s && s.type === "view" && s.options).map((s) => s.options.view));
+    const usedCats = new Set(sections.filter((s) => s && s.type === "category" && s.options).map((s) => parseInt(s.options.categoryId, 10)));
+    MAIN_SECTIONS.filter(([k]) => k !== "inicio" && !usedViews.has(k)).forEach(([k, label]) => {
+      const all = content.filter((i) => inSection(i, k));
+      if (all.length >= 3) rows.push(makeRow(`home:${k}`, label, shuffle(all, rng), limit, "poster", [...all].sort(byRecent)));
+    });
+    const count = {};
+    content.forEach((i) => genreIds(i).forEach((g) => { if (GENRE_NAMES[g] && !usedCats.has(g)) count[g] = (count[g] || 0) + 1; }));
+    Object.keys(count)
+      .filter((g) => count[g] >= 3)
+      .sort((a, b) => count[b] - count[a] || GENRE_NAMES[a].localeCompare(GENRE_NAMES[b], "es"))
+      .slice(0, extraGenres)
+      .forEach((g) => {
+        const all = content.filter((i) => genreIds(i).includes(Number(g)));
+        rows.push(makeRow(`home:g${g}`, GENRE_NAMES[g], shuffle(all, rng), limit, "poster", [...all].sort(byRecent)));
+      });
+  }
   return rows;
 }
 
 // Filas de una sección (Películas, Series, Animes, Doramas): lo reciente y una fila por género
-export function buildSectionRows({ content, key, rng = Math.random, limit = 20, maxGenres = 6, minPerGenre = 3 }) {
+export function buildSectionRows({ content, key, rng = Math.random, limit = 20, maxGenres = 12, minPerGenre = 2 }) {
   const items = content.filter((i) => inSection(i, key));
   if (!items.length) return [];
   const rows = [];
@@ -348,4 +368,24 @@ export function searchItems(content, query, limit = 60) {
   });
   out.sort((a, b) => a.score - b.score || a.order - b.order);
   return out.slice(0, limit).map((x) => x.item);
+}
+
+
+// ---------- Contenido relacionado / similar ----------
+// Mismo tipo (película con películas, serie con series), ordenado por géneros en común y sección.
+export function relatedItems(item, content, limit = 20) {
+  if (!item) return [];
+  const mine = new Set(genreIds(item));
+  const secs = (item.display_options && item.display_options.main_sections) || [];
+  const scored = [];
+  (content || []).forEach((c, order) => {
+    if (!c || String(c.id) === String(item.id) || c.media_type !== item.media_type) return;
+    const shared = genreIds(c).filter((g) => mine.has(g)).length;
+    const sameSec = secs.some((k) => inSection(c, k)) ? 1 : 0;
+    if (!shared && !sameSec) return;
+    const score = shared * 10 + sameSec * 6 + (Number(c.vote_average) || 0) / 10;
+    scored.push({ c, score, order });
+  });
+  scored.sort((a, b) => b.score - a.score || a.order - b.order);
+  return scored.slice(0, limit).map((x) => x.c);
 }
