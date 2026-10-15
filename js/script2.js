@@ -12769,8 +12769,12 @@ function sfInjectBulkMarksTool() {
       <div class="sf-bulk-key">
         <label for="sf-bulk-apikey">Clave de TheIntroDB <small>(opcional, sube el límite de 500 a 1000 consultas al día)</small></label>
         <div class="sf-bulk-key-row">
-          <input type="password" id="sf-bulk-apikey" class="form-input" placeholder="Pega tu clave aquí" autocomplete="off">
-          <button type="button" class="hc-btn sf-bulk-ghost" id="sf-bulk-savekey">Guardar</button>
+          <input type="text" id="sf-bulk-apikey" class="form-input sf-masked" placeholder="Mantén presionado para pegar" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+          <button type="button" class="hc-btn sf-bulk-ghost" id="sf-bulk-eye" title="Mostrar u ocultar"><i class="fas fa-eye"></i></button>
+        </div>
+        <div class="sf-bulk-key-row">
+          <button type="button" class="hc-btn sf-bulk-ghost" id="sf-bulk-paste"><i class="fas fa-paste"></i><span>Pegar</span></button>
+          <button type="button" class="hc-btn hc-btn-add" id="sf-bulk-savekey"><i class="fas fa-check"></i><span>Guardar clave</span></button>
         </div>
       </div>
       <div class="sf-bulk-actions">
@@ -12803,6 +12807,30 @@ function sfInjectBulkMarksTool() {
     sfBulkRefreshIdle();
     sfBulkStatus("Progreso reiniciado.");
   });
+  const keyInput = box.querySelector("#sf-bulk-apikey");
+  box.querySelector("#sf-bulk-eye").addEventListener("click", (e) => {
+    keyInput.classList.toggle("sf-masked");
+    e.currentTarget.innerHTML = `<i class="fas ${keyInput.classList.contains("sf-masked") ? "fa-eye" : "fa-eye-slash"}"></i>`;
+  });
+  // Botón "Pegar": lee el portapapeles (si la app/navegador lo permite)
+  box.querySelector("#sf-bulk-paste").addEventListener("click", async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text && text.trim()) {
+        keyInput.value = text.trim();
+        box.querySelector("#sf-bulk-savekey").click();
+        return;
+      }
+      showToast("El portapapeles está vacío.", "info");
+    } catch {
+      keyInput.focus();
+      showToast("La app no permite leer el portapapeles. Mantén presionado el campo y elige Pegar.", "info");
+    }
+  });
+  // Guardar solo al pegar
+  keyInput.addEventListener("paste", () =>
+    setTimeout(() => box.querySelector("#sf-bulk-savekey").click(), 50),
+  );
   box.querySelector("#sf-bulk-savekey").addEventListener("click", () => {
     const v = box.querySelector("#sf-bulk-apikey").value.trim();
     try {
