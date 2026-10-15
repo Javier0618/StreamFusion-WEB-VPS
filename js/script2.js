@@ -863,6 +863,9 @@ const ALL_CATEGORIES = [
 // Inyectar la pestaña "Portada" en Gestión ANTES de capturar los elementos del DOM
 sfInjectHomeContentManager();
 
+// Herramienta de tiempos de intro/créditos para todas las series
+sfInjectBulkMarksTool();
+
 // DOM Elements - Authentication
 const authContainer = document.getElementById("auth-container");
 const authCloseBtn = document.getElementById("auth-close-btn");
@@ -11746,7 +11749,20 @@ function sfIntroDbCacheSet(tmdbId, season, episode, marks) {
 
 async function sfFetchIntroDb(tmdbId, season, episode) {
   const url = `${SF_INTRODB_BASE}/media?tmdb_id=${encodeURIComponent(tmdbId)}&season=${season}&episode=${episode}`;
-  const res = await fetch(url);
+  // Clave opcional de TheIntroDB (sube el límite diario de 500 a 1000)
+  const key = sfIntroDbKeyUsable ? sfGetIntroDbKey() : "";
+  let res;
+  if (key) {
+    try {
+      res = await fetch(url, { headers: { Authorization: `Bearer ${key}` } });
+    } catch (err) {
+      // Si el servidor no acepta la clave desde el navegador, seguir sin ella
+      sfIntroDbKeyUsable = false;
+      res = await fetch(url);
+    }
+  } else {
+    res = await fetch(url);
+  }
   if (res.status === 404) return { status: "none" };
   if (res.status === 429) {
     let retryAfter = null;
@@ -12684,4 +12700,468 @@ function sfHasOwnHorizontalGesture(target) {
     el = el.parentElement;
   }
   return false;
+}
+
+
+// ================================================================
+// ████  TIEMPOS DE INTRO Y CRÉDITOS PARA TODAS LAS SERIES  ████
+// ================================================================
+// Gestión › Gestionar: recorre serie por serie y episodio por episodio,
+// consulta TheIntroDB (y opcionalmente introdb.app como respaldo) y GUARDA
+// los tiempos en Firestore al terminar cada serie. Se puede pausar y
+// continúa donde quedó (el progreso se recuerda en este dispositivo).
+
+let sfIntroDbKeyUsable = true;
+const SF_BULK_PROGRESS_KEY = "sf_bulk_marks_progress_v1";
+const SF_BULK_OPTS_KEY = "sf_bulk_marks_opts_v1";
+const SF_INTRODB_KEY_KEY = "sf_introdb_api_key";
+const SF_INTRODBAPP_BASE = "https://api.introdb.app";
+const SF_BULK_DELAY_MS = 450;      // TheIntroDB permite 30 consultas cada 10 s
+const SF_BULK_APP_DELAY_MS = 1000; // introdb.app: uso justo, 1 por segundo
+const SF_BULK_MAX_WAIT_S = 120;    // si piden esperar más que esto, se pausa
+
+const sfBulk = {
+  running: false,
+  stopRequested: false,
+  appUsable: true,
+  imdbCache: new Map(),
+  log: [],
+  stats: null,
+};
+
+function sfGetIntroDbKey() {
+  try { return (localStorage.getItem(SF_INTRODB_KEY_KEY) || "").trim(); } catch { return ""; }
+}
+
+function sfBulkReadProgress() {
+  try {
+    const v = JSON.parse(localStorage.getItem(SF_BULK_PROGRESS_KEY) || "{}");
+    return { done: Array.isArray(v.done) ? v.done : [], updatedAt: v.updatedAt || null };
+  } catch { return { done: [], updatedAt: null }; }
+}
+function sfBulkWriteProgress(p) {
+  try { localStorage.setItem(SF_BULK_PROGRESS_KEY, JSON.stringify({ ...p, updatedAt: Date.now() })); } catch {}
+}
+function sfBulkReadOpts() {
+  const def = { overwrite: false, fallback: true, onlyWithLinks: false };
+  try { return { ...def, ...JSON.parse(localStorage.getItem(SF_BULK_OPTS_KEY) || "{}") }; } catch { return def; }
+}
+
+function sfInjectBulkMarksTool() {
+  const section = document.getElementById("manage-content-section");
+  if (!section || document.getElementById("sf-bulk-marks")) return;
+  const box = document.createElement("details");
+  box.id = "sf-bulk-marks";
+  box.className = "sf-bulk";
+  box.innerHTML = `
+    <summary>
+      <span class="sf-bulk-ico"><i class="fas fa-forward"></i></span>
+      <span class="sf-bulk-sum-text"><strong>Tiempos de intro y créditos</strong><small id="sf-bulk-sub">Importar para todas las series de una vez</small></span>
+      <i class="fas fa-chevron-down sf-bulk-chev"></i>
+    </summary>
+    <div class="sf-bulk-body">
+      <p class="sf-bulk-help">Recorre todas tus series, consulta los tiempos de cada episodio y los guarda solos al terminar cada serie. Puedes pausar cuando quieras: al volver, continúa donde quedó. Mantén esta pantalla abierta mientras trabaja.</p>
+      <div class="sf-bulk-opts">
+        <label><input type="checkbox" id="sf-bulk-overwrite"> Reemplazar tiempos que ya existen</label>
+        <label><input type="checkbox" id="sf-bulk-fallback"> Si TheIntroDB no tiene datos, buscar en introdb.app</label>
+        <label><input type="checkbox" id="sf-bulk-onlylinks"> Solo episodios que tienen enlace de video</label>
+      </div>
+      <div class="sf-bulk-key">
+        <label for="sf-bulk-apikey">Clave de TheIntroDB <small>(opcional, sube el límite de 500 a 1000 consultas al día)</small></label>
+        <div class="sf-bulk-key-row">
+          <input type="password" id="sf-bulk-apikey" class="form-input" placeholder="Pega tu clave aquí" autocomplete="off">
+          <button type="button" class="hc-btn sf-bulk-ghost" id="sf-bulk-savekey">Guardar</button>
+        </div>
+      </div>
+      <div class="sf-bulk-actions">
+        <button type="button" class="hc-btn hc-btn-add" id="sf-bulk-start"><i class="fas fa-play"></i><span>Iniciar</span></button>
+        <button type="button" class="hc-btn sf-bulk-ghost" id="sf-bulk-stop" disabled><i class="fas fa-pause"></i><span>Pausar</span></button>
+        <button type="button" class="hc-btn sf-bulk-ghost" id="sf-bulk-reset" title="Volver a empezar desde la primera serie"><i class="fas fa-redo"></i><span>Reiniciar</span></button>
+      </div>
+      <div class="sf-bulk-progress" id="sf-bulk-progress" hidden>
+        <div class="sf-bulk-bar"><span id="sf-bulk-bar-fill"></span></div>
+        <div class="sf-bulk-now" id="sf-bulk-now"></div>
+        <div class="sf-bulk-kpis" id="sf-bulk-kpis"></div>
+      </div>
+      <div class="sf-bulk-status" id="sf-bulk-status"></div>
+      <ol class="sf-bulk-log" id="sf-bulk-log"></ol>
+    </div>`;
+  section.insertBefore(box, section.firstChild);
+
+  box.addEventListener("toggle", () => { if (box.open) sfBulkRefreshIdle(); });
+  box.querySelector("#sf-bulk-start").addEventListener("click", () => sfBulkStart());
+  box.querySelector("#sf-bulk-stop").addEventListener("click", () => {
+    sfBulk.stopRequested = true;
+    sfBulkStatus("Pausando al terminar el episodio actual…");
+  });
+  box.querySelector("#sf-bulk-reset").addEventListener("click", () => {
+    if (sfBulk.running) return;
+    if (!confirm("¿Volver a empezar desde la primera serie? Los tiempos ya guardados no se borran.")) return;
+    sfBulkWriteProgress({ done: [] });
+    sfBulk.log = [];
+    document.getElementById("sf-bulk-log").innerHTML = "";
+    sfBulkRefreshIdle();
+    sfBulkStatus("Progreso reiniciado.");
+  });
+  box.querySelector("#sf-bulk-savekey").addEventListener("click", () => {
+    const v = box.querySelector("#sf-bulk-apikey").value.trim();
+    try {
+      if (v) localStorage.setItem("sf_introdb_api_key", v);
+      else localStorage.removeItem("sf_introdb_api_key");
+    } catch {}
+    sfIntroDbKeyUsable = true;
+    showToast(v ? "Clave guardada en este dispositivo" : "Clave eliminada", "success");
+  });
+  ["sf-bulk-overwrite", "sf-bulk-fallback", "sf-bulk-onlylinks"].forEach((id) =>
+    box.querySelector("#" + id).addEventListener("change", () => {
+      try {
+        localStorage.setItem("sf_bulk_marks_opts_v1", JSON.stringify({
+          overwrite: box.querySelector("#sf-bulk-overwrite").checked,
+          fallback: box.querySelector("#sf-bulk-fallback").checked,
+          onlyWithLinks: box.querySelector("#sf-bulk-onlylinks").checked,
+        }));
+      } catch {}
+    }),
+  );
+  // Rellenar valores guardados cuando el script terminó de cargar
+  setTimeout(() => {
+    const o = sfBulkReadOpts();
+    box.querySelector("#sf-bulk-overwrite").checked = !!o.overwrite;
+    box.querySelector("#sf-bulk-fallback").checked = !!o.fallback;
+    box.querySelector("#sf-bulk-onlylinks").checked = !!o.onlyWithLinks;
+    box.querySelector("#sf-bulk-apikey").value = sfGetIntroDbKey();
+  }, 0);
+}
+
+function sfBulkSeriesList() {
+  return (allContent || [])
+    .filter((i) => i.media_type === "tv" && i.seasons && Object.keys(i.seasons).length)
+    .sort((a, b) => String(a.title || a.name || "").localeCompare(String(b.title || b.name || ""), "es"));
+}
+
+function sfBulkStatus(text) {
+  const el = document.getElementById("sf-bulk-status");
+  if (el) el.textContent = text || "";
+}
+
+function sfBulkLog(html, kind = "") {
+  sfBulk.log.unshift({ html, kind });
+  sfBulk.log = sfBulk.log.slice(0, 80);
+  const ol = document.getElementById("sf-bulk-log");
+  if (ol) ol.innerHTML = sfBulk.log.map((l) => `<li class="${l.kind}">${l.html}</li>`).join("");
+}
+
+function sfBulkRefreshIdle() {
+  const list = sfBulkSeriesList();
+  const done = new Set(sfBulkReadProgress().done.map(String));
+  const pending = list.filter((s) => !done.has(String(s.id))).length;
+  const sub = document.getElementById("sf-bulk-sub");
+  if (sub) {
+    sub.textContent = sfBulk.running
+      ? "Trabajando…"
+      : `${list.length} series · ${list.length - pending} revisadas · ${pending} pendientes`;
+  }
+  const start = document.getElementById("sf-bulk-start");
+  if (start && !sfBulk.running) {
+    start.querySelector("span").textContent = list.length - pending > 0 && pending > 0 ? "Continuar" : "Iniciar";
+  }
+}
+
+function sfBulkRender(progress) {
+  const box = document.getElementById("sf-bulk-progress");
+  if (!box) return;
+  box.hidden = false;
+  const st = sfBulk.stats;
+  const pct = progress.total ? Math.round((progress.index / progress.total) * 100) : 0;
+  document.getElementById("sf-bulk-bar-fill").style.width = `${pct}%`;
+  document.getElementById("sf-bulk-now").innerHTML =
+    `Serie <strong>${progress.index + (progress.current ? 1 : 0)}/${progress.total}</strong>` +
+    (progress.current ? ` · ${sfEsc(progress.current)}${progress.ep ? ` <small>${progress.ep}</small>` : ""}` : "");
+  document.getElementById("sf-bulk-kpis").innerHTML = `
+    <span><b>${st.requests}</b> consultas</span>
+    <span><b>${st.intro}</b> intros</span>
+    <span><b>${st.credits}</b> créditos</span>
+    <span><b>${st.saved}</b> series guardadas</span>`;
+}
+
+// ---------- Respaldo: introdb.app (usa IMDb ID) ----------
+async function sfBulkImdbId(tmdbId) {
+  const k = String(tmdbId);
+  if (sfBulk.imdbCache.has(k)) return sfBulk.imdbCache.get(k);
+  let imdb = null;
+  try {
+    const r = await fetch(`${API_BASE_URL}/tv/${encodeURIComponent(k)}/external_ids?api_key=${API_KEY}`);
+    if (r.ok) imdb = (await r.json()).imdb_id || null;
+  } catch {}
+  sfBulk.imdbCache.set(k, imdb);
+  return imdb;
+}
+
+// Lector tolerante: acepta segmentos como objeto {intro:{...}} o lista [{segment_type,...}]
+// y tiempos en segundos (start_sec) o milisegundos (start_ms).
+function sfPickIntroDbAppMarks(json) {
+  const out = { intro_start: null, intro_end: null, credits_start: null };
+  if (!json || typeof json !== "object") return out;
+  const root = json.segments || json.data || json;
+  const num = (v) => (v === null || v === undefined || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null);
+  const time = (seg, which) => {
+    if (!seg || typeof seg !== "object") return null;
+    const sec = num(seg[`${which}_sec`]) ?? num(seg[`${which}Sec`]) ?? num(seg[which]);
+    if (sec !== null) return sec;
+    const ms = num(seg[`${which}_ms`]) ?? num(seg[`${which}Ms`]);
+    return ms !== null ? ms / 1000 : null;
+  };
+  const get = (type) => {
+    let seg = null;
+    if (Array.isArray(root)) {
+      seg = root.find((x) => x && [x.segment_type, x.type, x.kind].includes(type));
+    } else if (root && typeof root === "object") {
+      seg = root[type];
+      if (Array.isArray(seg)) seg = seg[0];
+    }
+    return seg && typeof seg === "object" ? seg : null;
+  };
+  const intro = get("intro");
+  if (intro) {
+    const st = time(intro, "start") ?? 0;
+    const en = time(intro, "end");
+    if (en !== null && en > st) {
+      out.intro_start = Math.round(st);
+      out.intro_end = Math.round(en);
+    }
+  }
+  const outro = get("outro") || get("credits");
+  if (outro) {
+    const st = time(outro, "start");
+    if (st !== null && st > 0) out.credits_start = Math.round(st);
+  }
+  return out;
+}
+
+async function sfFetchIntroDbApp(imdbId, season, episode) {
+  const url = `${SF_INTRODBAPP_BASE}/segments?imdb_id=${encodeURIComponent(imdbId)}&season=${season}&episode=${episode}`;
+  const res = await fetch(url);
+  if (res.status === 404) return { status: "none" };
+  if (res.status === 429) {
+    const h = Number(res.headers?.get?.("Retry-After"));
+    return { status: "rate", retryAfter: Number.isFinite(h) && h > 0 ? Math.ceil(h) : null };
+  }
+  if (!res.ok) return { status: "error", code: res.status };
+  return { status: "ok", marks: sfPickIntroDbAppMarks(await res.json()) };
+}
+
+// ---------- Utilidades ----------
+const sfMarksHasData = (m) => !!m && (m.intro_end !== null || m.credits_start !== null);
+function sfEpisodeHasStoredMarks(ep) {
+  return SF_MARK_KEYS.some((k) => ep[k] !== null && ep[k] !== undefined && ep[k] !== "");
+}
+
+async function sfBulkWait(seconds, label) {
+  for (let s = seconds; s > 0; s--) {
+    if (sfBulk.stopRequested) return false;
+    sfBulkStatus(`${label} Reintentando en ${s} s…`);
+    await sfSleep(1000);
+  }
+  sfBulkStatus("");
+  return !sfBulk.stopRequested;
+}
+
+// Consulta un episodio. Devuelve { marks, source } o { stop: "rate-day" | "network" }.
+async function sfBulkQueryEpisode(series, s, e, opts) {
+  const st = sfBulk.stats;
+  let marks = null;
+  let source = "";
+
+  // 1) Memoria local
+  const cached = sfIntroDbCacheGet(series.id, s, e);
+  if (cached) return { marks: cached, source: "memoria" };
+
+  // 2) TheIntroDB
+  if (cached === undefined) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      let r;
+      try {
+        st.requests++;
+        r = await sfFetchIntroDb(series.id, s, e);
+      } catch {
+        st.netErrors++;
+        if (st.netErrors >= 3 && st.found === 0) return { stop: "network" };
+        r = { status: "error", code: "red" };
+      }
+      if (r.status === "rate") {
+        const wait = r.retryAfter || 30;
+        if (wait > SF_BULK_MAX_WAIT_S) return { stop: "rate-day", wait };
+        if (!(await sfBulkWait(wait, "TheIntroDB pidió esperar."))) return { stop: "paused" };
+        continue;
+      }
+      if (r.status === "ok") {
+        sfIntroDbCacheSet(series.id, s, e, r.marks);
+        if (sfMarksHasData(r.marks)) { marks = r.marks; source = "TheIntroDB"; }
+      } else if (r.status === "none") {
+        sfIntroDbCacheSet(series.id, s, e, null);
+      } else {
+        st.errors++;
+      }
+      break;
+    }
+    await sfSleep(SF_BULK_DELAY_MS);
+  }
+
+  // 3) Respaldo introdb.app
+  if (!marks && opts.fallback && sfBulk.appUsable) {
+    const imdb = await sfBulkImdbId(series.id);
+    if (imdb) {
+      try {
+        st.requests++;
+        const r = await sfFetchIntroDbApp(imdb, s, e);
+        if (r.status === "ok" && sfMarksHasData(r.marks)) {
+          marks = r.marks;
+          source = "introdb.app";
+          sfIntroDbCacheSet(series.id, s, e, marks);
+        } else if (r.status === "rate") {
+          sfBulk.appUsable = false;
+          sfBulkLog("introdb.app alcanzó su límite: se sigue solo con TheIntroDB.", "warn");
+        }
+      } catch {
+        sfBulk.appUsable = false;
+        sfBulkLog("introdb.app no responde desde el navegador: se sigue solo con TheIntroDB.", "warn");
+      }
+      await sfSleep(SF_BULK_APP_DELAY_MS);
+    }
+  }
+  if (marks) st.found++;
+  return { marks, source };
+}
+
+async function sfBulkStart() {
+  if (sfBulk.running) return;
+  if (!isAdmin) { showToast("Solo administradores.", "error"); return; }
+  const list = sfBulkSeriesList();
+  if (!list.length) { sfBulkStatus("No hay series importadas."); return; }
+
+  const opts = {
+    overwrite: document.getElementById("sf-bulk-overwrite").checked,
+    fallback: document.getElementById("sf-bulk-fallback").checked,
+    onlyWithLinks: document.getElementById("sf-bulk-onlylinks").checked,
+  };
+  const progress = sfBulkReadProgress();
+  const done = new Set(progress.done.map(String));
+  const queue = list.filter((x) => !done.has(String(x.id)));
+  if (!queue.length) {
+    sfBulkStatus("Todas las series ya fueron revisadas. Pulsa Reiniciar para volver a empezar.");
+    return;
+  }
+
+  sfBulk.running = true;
+  sfBulk.stopRequested = false;
+  sfBulk.appUsable = true;
+  sfBulk.stats = { requests: 0, intro: 0, credits: 0, saved: 0, found: 0, errors: 0, netErrors: 0 };
+  const startBtn = document.getElementById("sf-bulk-start");
+  const stopBtn = document.getElementById("sf-bulk-stop");
+  startBtn.disabled = true;
+  stopBtn.disabled = false;
+  document.getElementById("sf-bulk-reset").disabled = true;
+  sfBulkRefreshIdle();
+
+  let wakeLock = null;
+  try { wakeLock = await navigator.wakeLock?.request?.("screen"); } catch {}
+  const beforeUnload = (ev) => { ev.preventDefault(); ev.returnValue = ""; };
+  window.addEventListener("beforeunload", beforeUnload);
+
+  let stopReason = null;
+  const base = list.length - queue.length;
+
+  try {
+    for (let i = 0; i < queue.length && !stopReason; i++) {
+      const series = queue[i];
+      const title = series.title || series.name || `ID ${series.id}`;
+      const seasons = JSON.parse(JSON.stringify(series.seasons));
+      let changed = 0, introN = 0, credN = 0, foundEp = 0, checked = 0;
+      let interrupted = false;
+
+      for (const sk in seasons) {
+        const season = seasons[sk];
+        const sNum = Number(season?.season_number);
+        if (!season || !(sNum > 0) || !season.episodes) continue;
+        for (const ek in season.episodes) {
+          const ep = season.episodes[ek];
+          const eNum = Number(ep?.episode_number);
+          if (!ep || !(eNum > 0)) continue;
+          if (opts.onlyWithLinks && !String(ep.video_url || "").trim()) continue;
+          if (!opts.overwrite && sfEpisodeHasStoredMarks(ep)) continue;
+          if (sfBulk.stopRequested) { interrupted = true; stopReason = "paused"; break; }
+
+          sfBulkRender({ index: base + i, total: list.length, current: title, ep: `T${sNum} E${eNum}` });
+          checked++;
+          const r = await sfBulkQueryEpisode(series, sNum, eNum, opts);
+          if (r.stop) { interrupted = true; stopReason = r.stop; break; }
+          if (!r.marks) continue;
+          foundEp++;
+          const m = r.marks;
+          if (m.intro_end !== null && m.intro_start !== null && (opts.overwrite || ep.intro_end == null)) {
+            ep.intro_start = Math.round(m.intro_start);
+            ep.intro_end = Math.round(m.intro_end);
+            introN++; changed++;
+          }
+          if (m.credits_start !== null && (opts.overwrite || ep.credits_start == null)) {
+            ep.credits_start = Math.round(m.credits_start);
+            credN++; changed++;
+          }
+        }
+        if (interrupted) break;
+      }
+
+      // Guardar lo obtenido de esta serie (aunque se haya interrumpido)
+      if (changed > 0) {
+        try {
+          await updateDoc(doc(db, "content", String(series.id)), { seasons });
+          series.seasons = seasons;
+          sfBulk.stats.saved++;
+          sfBulk.stats.intro += introN;
+          sfBulk.stats.credits += credN;
+          sfBulkLog(`<b>${sfEsc(title)}</b>: ${introN} intros, ${credN} créditos guardados.`, "ok");
+        } catch (err) {
+          console.error("Error guardando tiempos:", err);
+          sfBulkLog(`<b>${sfEsc(title)}</b>: no se pudo guardar (${sfEsc(err?.code || err?.message || "error")}).`, "err");
+          stopReason = stopReason || "save";
+          break;
+        }
+      } else if (!interrupted) {
+        sfBulkLog(
+          `<b>${sfEsc(title)}</b>: ${checked ? `sin datos en ${checked} episodio${checked === 1 ? "" : "s"}` : "ya tenía todos los tiempos"}.`,
+          "muted",
+        );
+      }
+
+      if (!interrupted) {
+        const p = sfBulkReadProgress();
+        p.done.push(String(series.id));
+        sfBulkWriteProgress(p);
+      }
+      sfBulkRender({ index: base + i + (interrupted ? 0 : 1), total: list.length, current: "" });
+    }
+  } finally {
+    sfBulk.running = false;
+    window.removeEventListener("beforeunload", beforeUnload);
+    try { await wakeLock?.release?.(); } catch {}
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    document.getElementById("sf-bulk-reset").disabled = false;
+    sfBulkRefreshIdle();
+  }
+
+  const st = sfBulk.stats;
+  const resumen = `${st.saved} series actualizadas · ${st.intro} intros · ${st.credits} créditos · ${st.requests} consultas.`;
+  if (stopReason === "rate-day") {
+    sfBulkStatus(`TheIntroDB alcanzó su límite diario. ${resumen} Vuelve más tarde (o mañana) y pulsa Continuar: seguirá donde quedó.${sfGetIntroDbKey() ? "" : " Con una clave gratuita de TheIntroDB el límite sube a 1000 al día."}`);
+  } else if (stopReason === "network") {
+    sfBulkStatus(`No se pudo conectar con TheIntroDB desde este navegador. ${resumen}`);
+  } else if (stopReason === "paused") {
+    sfBulkStatus(`En pausa. ${resumen} Pulsa Continuar para seguir.`);
+  } else if (stopReason === "save") {
+    sfBulkStatus(`Se detuvo por un error al guardar en la base de datos. ${resumen}`);
+  } else {
+    sfBulkStatus(`¡Terminado! ${resumen}`);
+    showToast("Tiempos de intro y créditos actualizados", "success");
+  }
 }
