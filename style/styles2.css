@@ -8364,3 +8364,35 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
 .sf-bulk-log li.err { border-left: 3px solid var(--error-color); }
 .sf-bulk-log li.warn { border-left: 3px solid #facc15; }
 .sf-bulk-log li.muted { color: var(--text-secondary); }
+
+
+/* ================================================================
+   CORRECCIÓN · Permitir seleccionar, copiar y PEGAR en los campos
+   (el body tiene user-select:none y en la app del celular bloqueaba
+   el menú de pegar en todos los inputs)
+   ================================================================ */
+input,
+textarea,
+select,
+[contenteditable="true"] {
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  user-select: text !important;
+  -webkit-touch-callout: default !important;
+}
+input[type="checkbox"],
+input[type="radio"],
+input[type="range"] {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+
+/* Campo de la clave: oculto como contraseña pero permitiendo pegar */
+.sf-masked { -webkit-text-security: disc; }
+.sf-bulk-key-row + .sf-bulk-key-row { margin-top: 8px; }
+.sf-bulk-key-row .hc-btn { min-height: 42px; }
+.sf-bulk-key-row .hc-btn span { display: inline !important; }
+.sf-bulk-key-row #sf-bulk-paste,
+.sf-bulk-key-row #sf-bulk-savekey { flex: 1; }
+#sf-bulk-eye { width: 44px; flex-shrink: 0; padding: 0; }
