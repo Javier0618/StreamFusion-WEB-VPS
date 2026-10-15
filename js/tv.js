@@ -38,6 +38,9 @@ const WATCHED_KEY = "sf_watched_v1";
   const l = document.createElement("link"); l.rel = "preconnect"; l.href = h; l.crossOrigin = ""; document.head.appendChild(l);
 });
 
+// Tamaño del título según su largo (los nombres muy largos se achican y se recortan con "…")
+const titleSize = (t) => { const n = String(t || "").length; return n > 70 ? "t-xl" : n > 45 ? "t-lg" : n > 28 ? "t-md" : ""; };
+
 // ---------------- Utilidades ----------------
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (v) =>
@@ -606,6 +609,7 @@ function heroShow(i) {
   const genres = core.genreLabels(it, 3).map(esc).join(" · ");
   $("#hero-kind").textContent = it.media_type === "tv" ? "Serie" : "Película";
   $("#hero-title").textContent = it.title || "";
+  $("#hero-title").className = titleSize(it.title);
   $("#hero-meta").innerHTML = [year ? esc(year) : "", rating, genres].filter(Boolean).join(" &nbsp;·&nbsp; ");
   $("#hero-overview").textContent = it.overview || "";
   const t = playTarget(it);
@@ -775,7 +779,7 @@ function renderDetail() {
       <div class="detail-top">
         <div class="detail-poster"><div class="poster">${item.poster_path ? `<img src="${IMG}/w500${esc(item.poster_path)}" alt="">` : `<div class="noimg">${esc(item.title)}</div>`}</div></div>
         <div class="detail-info">
-          <h1>${esc(item.title)}</h1>
+          <h1 class="${titleSize(item.title)}">${esc(item.title)}</h1>
           <div class="meta">${meta}</div>
           ${genres ? `<div class="genres">${genres}</div>` : ""}
           <p class="overview">${esc(item.overview || "")}</p>
@@ -983,7 +987,7 @@ window.addEventListener("message", (ev) => {
 // ---------------- Confirmar (quitar de "Continuar viendo") ----------------
 function openConfirm(title, text, yesLabel, onYes) {
   if (state.confirm) return;
-  state.confirm = { onYes, prev: nav.focus };
+  state.confirm = { onYes, prev: nav.focus, t0: Date.now() };
   if (nav.focus) nav.focus.classList.remove("focused");
   $("#confirm-title").textContent = title;
   $("#confirm-text").textContent = text;
@@ -1097,6 +1101,8 @@ window.sfNativeKey = (action) => {
 window.sfIsPlayer = () => state.screen === "player"; // MainActivity lo consulta cada ~0.4 s
 window.sfHandleBack = goBack; // la versión Android lo llama desde el botón Atrás del control
 
+const OK_HOLD_MS = 650;
+let okUpAt = 0; // cuándo se soltó OK por última vez (el diálogo ignora el OK que lo abrió)
 let okHold = null; // OK sostenido sobre una tarjeta de "Continuar viendo"
 // Samsung Tizen: registrar teclas multimedia para recibirlas
 try {
@@ -1108,13 +1114,19 @@ document.addEventListener("keydown", (e) => {
     if (!a) return;
     e.preventDefault();
     if (a === "left" || a === "right" || a === "up" || a === "down") focusConfirm(state.confirm.cur === $("#confirm-yes") ? $("#confirm-no") : $("#confirm-yes"));
-    else if (a === "ok" && !e.repeat) closeConfirm(state.confirm.cur === $("#confirm-yes"));
+    else if (a === "ok" && !e.repeat && (okUpAt >= state.confirm.t0 || Date.now() - state.confirm.t0 > 2500)) closeConfirm(state.confirm.cur === $("#confirm-yes"));
     else if (a === "back") closeConfirm(false);
     return;
   }
   if (state.screen === "search" && !e.ctrlKey && !e.metaKey && !e.altKey) {
     if (e.key === "Backspace") { e.preventDefault(); return typeKey("del"); }
     if (e.key.length === 1 && /[a-z0-9ñ]/i.test(e.key)) { e.preventDefault(); return typeKey("char", e.key.toUpperCase()); }
+  }
+  if ((e.key === "ContextMenu" || e.keyCode === 82) && state.screen === "browse" && nav.focus && nav.focus.dataset.cont) {
+    e.preventDefault();
+    const it = state.byId.get(String(nav.focus.dataset.id));
+    if (it) askRemoveContinue(it.id, it.title);
+    return;
   }
   const action = core.normalizeKey(e);
   if (!action) return;
@@ -1132,16 +1144,21 @@ document.addEventListener("keydown", (e) => {
 
   e.preventDefault();
   if (state.screen === "player") { dbgState.src = "pagina"; return onPlayerAction(action); }
-  // Tarjeta de "Continuar viendo": OK corto abre; OK sostenido pregunta si quitarla
+  // Tarjeta de "Continuar viendo": OK corto abre; OK sostenido (o tecla Menú) pregunta si quitarla.
+  // Se mide con un temporizador: en muchos controles el sistema no avisa de la repetición de la tecla.
   if (action === "ok" && nav.focus && nav.focus.dataset.cont) {
-    if (!e.repeat) okHold = { el: nav.focus, done: false };
-    else if (okHold && !okHold.done) {
-      okHold.done = true;
-      const it = state.byId.get(String(okHold.el.dataset.id));
+    if (okHold && Date.now() - okHold.t0 < 3000) return; // repetición mientras se mantiene
+    const h = { el: nav.focus, done: false, t0: Date.now() };
+    h.timer = setTimeout(() => {
+      if (okHold !== h || h.done) return;
+      h.done = true;
+      const it = state.byId.get(String(h.el.dataset.id));
       if (it) askRemoveContinue(it.id, it.title);
-    }
+    }, OK_HOLD_MS);
+    okHold = h;
     return;
   }
+  if (okHold) { clearTimeout(okHold.timer); okHold = null; } // cualquier otra tecla cancela
   if (action === "up" || action === "down" || action === "left" || action === "right") move(action);
   else if (action === "ok") activate(nav.focus);
   else if (action === "back") goBack();
@@ -1193,8 +1210,10 @@ async function boot() {
 }
 
 document.addEventListener("keyup", (e) => {
+  if (core.normalizeKey(e) === "ok") okUpAt = Date.now();
   if (core.normalizeKey(e) !== "ok" || !okHold) return;
   const h = okHold;
+  clearTimeout(h.timer);
   okHold = null;
   if (!h.done && !state.confirm && state.screen === "browse" && h.el === nav.focus) activate(h.el);
 }, true);
