@@ -8,7 +8,7 @@
    ================================================================ */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-app.js";
 import {
-  getFirestore, collection, getDocs, query, orderBy,
+  getFirestore, collection, getDocs, query, orderBy, limit, startAfter, doc, getDoc,
 } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-firestore.js";
 import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-auth.js";
 import { firebaseConfig } from "https://sfusion.netlify.app/js/config.js";
@@ -16,6 +16,10 @@ import * as core from "https://sfusion.netlify.app/js/tv-core.js";
 
 // ---------------- Configuración ----------------
 const IMG = "https://image.tmdb.org/t/p";
+const PAGE_FIRST = 120;   // primer lote: lo que llena la primera pantalla (banner + filas)
+const PAGE_BG = 300;      // lotes siguientes, en segundo plano
+const PAGE_SYNC = 25;     // en cada arranque solo se piden las novedades (de a 25)
+const FULL_RESYNC_MS = 7 * 24 * 3600 * 1000; // cada 7 días se vuelve a bajar todo para corregir cambios/borrados
 const HERO_COUNT = 6;            // cuántos títulos rotan en el banner principal
 const HERO_SECONDS = 8;          // segundos entre cada uno
 const GRID_STEP = 24;            // tarjetas que se cargan cada vez en "Ver todo"
@@ -28,6 +32,11 @@ const SF_TV_RESUME_SEEK = true;  // reanudar en el minuto guardado (el cuadro "V
 
 const PROGRESS_KEY = "sf_progress_v1";
 const WATCHED_KEY = "sf_watched_v1";
+
+// Abre las conexiones a imágenes y base de datos cuanto antes
+["https://image.tmdb.org", "https://firestore.googleapis.com"].forEach((h) => {
+  const l = document.createElement("link"); l.rel = "preconnect"; l.href = h; l.crossOrigin = ""; document.head.appendChild(l);
+});
 
 // ---------------- Utilidades ----------------
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -49,7 +58,24 @@ function toast(msg) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { t.hidden = true; }, 3500);
 }
-function setLoading(on) { $("#loading").classList.toggle("off", !on); }
+// Pantalla de inicio: la primera vez dura un mínimo (para que se vea la animación); después es solo un aro.
+const SPLASH_MIN_MS = 2300;
+let splashDone = false;
+function setLoading(on) {
+  const el = $("#loading");
+  if (on) {
+    if (splashDone) el.classList.add("mini");
+    el.classList.remove("off", "out");
+    return;
+  }
+  if (splashDone) { el.classList.add("off"); return; }
+  splashDone = true;
+  // performance.now() cuenta desde que empezó a abrir la página, así que no se suma espera de más
+  setTimeout(() => {
+    el.classList.add("out");
+    setTimeout(() => el.classList.add("off"), 600);
+  }, Math.max(0, SPLASH_MIN_MS - performance.now()));
+}
 
 // ---------------- Progreso (mismas claves que el celular) ----------------
 const getProgress = (id) => readJson(PROGRESS_KEY)[String(id)] || null;
@@ -99,15 +125,177 @@ const isPlayable = (item) =>
     ? core.getValidSeasons(item.seasons).length > 0
     : !!String(item.video_url || "").trim();
 
-async function loadContent() {
-  const snap = await getDocs(query(collection(db, "content"), orderBy("imported_at", "desc")));
-  state.content = snap.docs.map((d) => d.data()).filter((i) => i && i.id != null && isPlayable(i));
-  state.byId = new Map(state.content.map((i) => [String(i.id), i]));
-  // Secciones del inicio configuradas en tu panel (si fallan, el inicio sigue funcionando)
+// Caché local (IndexedDB): el catálogo aparece al instante y se actualiza en segundo plano
+function idb() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open("sf_tv_cache", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("kv");
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function cacheGet(k) {
+  try {
+    const d = await idb();
+    return await new Promise((res) => {
+      const q = d.transaction("kv").objectStore("kv").get(k);
+      q.onsuccess = () => res(q.result || null);
+      q.onerror = () => res(null);
+    });
+  } catch { return null; }
+}
+async function cachePut(k, v) {
+  try { const d = await idb(); d.transaction("kv", "readwrite").objectStore("kv").put(v, k); } catch {}
+}
+function applyContent(content, sections) {
+  state.content = content;
+  state.byId = new Map(content.map((i) => [String(i.id), i]));
+  state.sections = sections || [];
+}
+// Las dos consultas a Firestore salen a la vez (antes eran una tras otra)
+// Versión liviana de un título: sin temporadas ni enlaces (eso se pide al abrir la ficha)
+function slimItem(x, docId) {
+  return {
+    id: x.id, _doc: docId, _slim: true, title: x.title || "", media_type: x.media_type,
+    poster_path: x.poster_path || null, backdrop_path: x.backdrop_path || null,
+    vote_average: x.vote_average || 0, release_date: x.release_date || x.first_air_date || "",
+    overview: String(x.overview || "").slice(0, 240),
+    genres: core.genreIds(x),
+    display_options: { main_sections: (x.display_options && x.display_options.main_sections) || [], home_sections: (x.display_options && x.display_options.home_sections) || [] },
+    imported_at: x.imported_at ? { seconds: Number(x.imported_at.seconds ?? x.imported_at._seconds) || 0 } : null,
+  };
+}
+async function fetchSections() {
   try {
     const sec = await getDocs(query(collection(db, "home_sections"), orderBy("order")));
-    state.sections = sec.docs.map((d) => ({ id: d.id, ...d.data() }));
-  } catch (err) { console.warn("No se pudieron cargar las secciones del inicio", err); state.sections = []; }
+    return sec.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (err) { console.warn("No se pudieron cargar las secciones del inicio", err); return null; }
+}
+const idle = (ms = 40) => new Promise((r) => setTimeout(r, ms));
+
+// Pide una página del catálogo (más recientes primero). Devuelve { items, last, more }
+async function fetchPage(size, after) {
+  const q = after
+    ? query(collection(db, "content"), orderBy("imported_at", "desc"), startAfter(after), limit(size))
+    : query(collection(db, "content"), orderBy("imported_at", "desc"), limit(size));
+  const snap = await getDocs(q);
+  const items = [];
+  snap.docs.forEach((d) => { const x = d.data(); if (x && x.id != null && isPlayable(x)) items.push(slimItem(x, d.id)); });
+  return { items, last: snap.docs.length ? snap.docs[snap.docs.length - 1] : null, more: snap.docs.length === size };
+}
+
+function mergeItems(items) {
+  let added = 0;
+  for (const it of items) {
+    const key = String(it.id);
+    if (state.byId.has(key)) continue;
+    state.content.push(it); state.byId.set(key, it); added++;
+  }
+  return added;
+}
+function saveCatalog(full) {
+  const prev = state.catalogMeta || {};
+  state.catalogMeta = { ts: Date.now(), full: full ? Date.now() : (prev.full || Date.now()) };
+  cachePut("catalog_v2", { items: state.content, ...state.catalogMeta });
+}
+// Al terminar la descarga, "Continuar viendo" puede incluir títulos antiguos que antes no estaban cargados
+function refreshContinueRow() {
+  const want = core.buildContinueList(readJson(PROGRESS_KEY), state.byId, 20).length;
+  if (want === document.querySelectorAll("#rows [data-cont]").length) return;
+  const key = nav.focus && nav.focus.dataset.key;
+  renderRows();
+  const el = key && document.querySelector(`#screen-browse [data-key="${CSS.escape(key)}"]`);
+  if (el) setFocus(el); else restoreFocus("browse");
+}
+// Las secciones aún sin visitar se calcularán con más datos; el Inicio visible no se mueve
+function onIndexProgress(done, finished) {
+  state.indexing = finished ? null : { done };
+  Object.keys(state.baseRows).forEach((k) => { if (k !== "inicio") delete state.baseRows[k]; });
+  if (finished && state.screen === "browse" && state.section === "inicio") refreshContinueRow();
+  if (state.screen === "search" && state.search && state.search.q) runSearch();
+  else if (state.screen === "search") renderSearch();
+}
+// Resto del catálogo, en segundo plano y por lotes. `into` = lista nueva (resincronización) o null = ir sumando
+async function loadRest(after, into) {
+  let total = state.content.length;
+  try {
+    for (let more = true; more; ) {
+      const p = await fetchPage(PAGE_BG, after);
+      if (into) into.push(...p.items); else mergeItems(p.items);
+      total += p.items.length; after = p.last; more = p.more;
+      if (!into) onIndexProgress(total, !more);
+      await idle(120); // deja respirar a la interfaz entre lote y lote
+    }
+    return true;
+  } catch (err) { console.warn("Carga en segundo plano interrumpida", err); if (!into) onIndexProgress(total, true); return false; }
+}
+// Arranques siguientes: solo lo nuevo (páginas pequeñas hasta tropezar con algo ya guardado)
+async function syncNew() {
+  const fresh = [];
+  try {
+    let after = null;
+    for (let more = true; more; ) {
+      const p = await fetchPage(PAGE_SYNC, after);
+      const known = p.items.some((i) => state.byId.has(String(i.id)));
+      fresh.push(...p.items.filter((i) => !state.byId.has(String(i.id))));
+      after = p.last; more = p.more && !known;
+    }
+  } catch (err) { console.warn("No se pudo buscar contenido nuevo", err); return; }
+  if (fresh.length) {
+    state.content.unshift(...fresh);
+    fresh.forEach((i) => state.byId.set(String(i.id), i));
+    state.baseRows = { inicio: state.baseRows.inicio }; // la próxima vez que se abra una sección ya incluye lo nuevo
+  }
+  saveCatalog(false);
+}
+
+async function loadContent() {
+  const sectionsP = fetchSections();
+  const cached = await cacheGet("catalog_v2");
+  if (cached && Array.isArray(cached.items) && cached.items.length) {
+    // arranque rápido: todo el catálogo sale del dispositivo
+    applyContent(cached.items, (await sectionsP) || []);
+    state.catalogMeta = { ts: cached.ts, full: cached.full || cached.ts };
+    if (Date.now() - state.catalogMeta.full > FULL_RESYNC_MS) {
+      const fresh = [];
+      loadRest(null, fresh).then((ok) => {
+        if (!ok) return;
+        const map = new Map(); fresh.forEach((i) => { if (!map.has(String(i.id))) map.set(String(i.id), i); });
+        cachePut("catalog_v2", { items: [...map.values()], ts: Date.now(), full: Date.now() }); // se usa desde el próximo arranque
+      });
+    } else syncNew();
+    return;
+  }
+  // primer arranque: un primer lote pequeño para pintar ya, y el resto de a poco
+  const first = await fetchPage(PAGE_FIRST, null);
+  applyContent(first.items, (await sectionsP) || []);
+  onIndexProgress(first.items.length, !first.more);
+  if (first.more) loadRest(first.last, null).then((ok) => { if (ok) saveCatalog(true); });
+  else saveCatalog(true);
+}
+
+// Trae el documento completo (temporadas, enlaces) cuando se necesita: al abrir una ficha o reproducir
+const hydrating = new Map();
+function hydrate(item) {
+  if (!item || !item._slim) return Promise.resolve(item);
+  const key = String(item.id);
+  if (hydrating.has(key)) return hydrating.get(key);
+  const p = getDoc(doc(db, "content", String(item._doc || item.id))).then((snap) => {
+    const full = snap.exists() ? snap.data() : null;
+    if (!full || !isPlayable(full)) {
+      // el título ya no existe o ya no tiene enlaces: se saca del catálogo guardado
+      state.content = state.content.filter((i) => i !== item);
+      state.byId.delete(key);
+      state.baseRows = {};
+      cachePut("catalog_v2", { items: state.content, ...(state.catalogMeta || { ts: Date.now(), full: Date.now() }) });
+      throw new Error("gone");
+    }
+    Object.assign(item, full);
+    item._slim = false;
+    return item;
+  }).finally(() => hydrating.delete(key));
+  hydrating.set(key, p);
+  return p;
 }
 
 // ---------------- Foco y navegación con el control ----------------
@@ -478,6 +666,7 @@ function renderSearch() {
   box.scrollTop = 0;
   $("#search-hint").textContent = !sr.q.trim() ? "Escribe para buscar películas, series, animes y doramas"
     : sr.results.length ? `${sr.results.length} resultado${sr.results.length === 1 ? "" : "s"}` : `Sin resultados para «${sr.q.trim()}»`;
+  if (state.indexing && sr.q.trim()) $("#search-hint").textContent += `  ·  cargando más del catálogo… (${state.indexing.done} títulos)`;
   invalidateNav();
 }
 function runSearch() {
@@ -508,6 +697,11 @@ function openSearch() {
 // ---------------- Detalle ----------------
 function playTarget(item) {
   const prog = getProgress(item.id);
+  if (item._slim) { // aún sin temporadas/enlaces: etiqueta aproximada, se confirma al hidratar
+    if (item.media_type !== "tv") return { label: prog && Number(prog.t) > 10 ? "▶ Continuar" : "▶ Reproducir", season: null, episode: null };
+    if (prog && prog.s && prog.e) return { label: `▶ Continuar T${prog.s} · E${prog.e}`, season: Number(prog.s), episode: Number(prog.e) };
+    return { label: "▶ Reproducir T1 · E1", season: 1, episode: 1 };
+  }
   if (item.media_type !== "tv") {
     if (!String(item.video_url || "").trim()) return null;
     return { label: prog && Number(prog.t) > 10 ? "▶ Continuar" : "▶ Reproducir", season: null, episode: null };
@@ -601,6 +795,11 @@ function renderDetail() {
 function openDetail(id) {
   const item = state.byId.get(String(id));
   if (!item) return;
+  if (item._slim) {
+    setLoading(true);
+    hydrate(item).then(() => { setLoading(false); openDetail(id); }).catch(() => { setLoading(false); toast("Este título ya no está disponible o no hay conexión."); });
+    return;
+  }
   if (state.screen === "detail" && state.detail) (state.detailHist = state.detailHist || []).push(state.detail); // viene de "relacionado"
   else { state.stack.push(state.screen); state.detailHist = []; }
   state.detail = { item, season: null, tab: "eps" };
@@ -620,6 +819,11 @@ function selectSeason(n) {
 function playFromHero() {
   const it = currentHero();
   if (!it) return;
+  if (it._slim) {
+    setLoading(true);
+    hydrate(it).then(() => { setLoading(false); playFromHero(); }).catch(() => { setLoading(false); toast("Este título ya no está disponible o no hay conexión."); });
+    return;
+  }
   const t = playTarget(it);
   if (!t) return openDetail(it.id);
   state.detail = null; // al salir del reproductor se vuelve al Inicio, no a la ficha
