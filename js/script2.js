@@ -2202,7 +2202,9 @@ function initEventListeners() {
     googleRegisterBtn.addEventListener("click", handleGoogleSignIn);
 
   // Hero swipe functionality
-  if (hero) {
+  // DESACTIVADO: el hero de Inicio ya recibe addHeroSwipeSupport() en
+  // renderHeroSlides(); este segundo manejador hacía avanzar 2 slides.
+  if (false && hero) {
     let touchStartX = 0;
     let touchEndX = 0;
     hero.addEventListener("touchstart", (e) => {
@@ -4994,24 +4996,52 @@ function initializeCarousel(carouselSection) {
     startAutoPlay();
   });
 
-  carousel.addEventListener("touchstart", (e) => {
-    touchStartX = e.touches[0].clientX;
-    isDragging = true;
-    carousel.style.transition = "none";
-    stopAutoPlay();
-  });
+  let touchStartYc = 0;
+  let dragAxis = null; // "x" | "y" | null
+  carousel.addEventListener(
+    "touchstart",
+    (e) => {
+      if (totalSlides < 2 || e.touches.length !== 1) {
+        isDragging = false;
+        return;
+      }
+      touchStartX = touchEndX = e.touches[0].clientX;
+      touchStartYc = e.touches[0].clientY;
+      dragAxis = null;
+      isDragging = true;
+      stopAutoPlay();
+    },
+    { passive: true },
+  );
 
-  carousel.addEventListener("touchmove", (e) => {
+  carousel.addEventListener(
+    "touchmove",
+    (e) => {
+      if (!isDragging) return;
+      touchEndX = e.touches[0].clientX;
+      const dx = touchEndX - touchStartX;
+      const dy = e.touches[0].clientY - touchStartYc;
+      if (!dragAxis && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+        dragAxis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+        if (dragAxis === "x") carousel.style.transition = "none";
+      }
+      if (dragAxis !== "x") return; // scroll vertical: no arrastrar el carrusel
+      carousel.style.transform = `translateX(calc(-${currentIndex * 100}% + ${dx}px))`;
+    },
+    { passive: true },
+  );
+
+  carousel.addEventListener("touchcancel", () => {
     if (!isDragging) return;
-    touchEndX = e.touches[0].clientX;
-    const diff = touchEndX - touchStartX;
-    carousel.style.transform = `translateX(calc(-${currentIndex * 100}% + ${diff}px))`;
+    isDragging = false;
+    updateCarousel();
+    startAutoPlay();
   });
 
   carousel.addEventListener("touchend", () => {
     if (!isDragging) return;
     isDragging = false;
-    const diff = touchEndX - touchStartX;
+    const diff = dragAxis === "x" ? touchEndX - touchStartX : 0;
     if (diff > 50) {
       prevSlide();
     } else if (diff < -50) {
@@ -5859,71 +5889,84 @@ function goToHeroSlide(index, restartAutoplay = true) {
 }
 
 // Swipe support for heroes
+// Se registra UNA sola vez por hero (antes se acumulaba en cada render y un
+// deslizamiento saltaba varios slides). Un toque sin movimiento ya no cambia
+// de slide y el scroll vertical no lo mueve.
 function addHeroSwipeSupport(heroElement) {
-  let touchStartX = 0;
-  let touchEndX = 0;
+  if (!heroElement || heroElement.dataset.sfSwipe === "1") return;
+  heroElement.dataset.sfSwipe = "1";
+
+  let startX = 0;
+  let startY = 0;
+  let endX = 0;
+  let endY = 0;
+  let tracking = false;
 
   heroElement.addEventListener(
     "touchstart",
     (e) => {
-      touchStartX = e.changedTouches[0].screenX;
+      if (e.touches.length !== 1) {
+        tracking = false;
+        return;
+      }
+      tracking = true;
+      startX = endX = e.touches[0].clientX;
+      startY = endY = e.touches[0].clientY;
     },
-    false,
+    { passive: true },
   );
 
   heroElement.addEventListener(
-    "touchend",
+    "touchmove",
     (e) => {
-      touchEndX = e.changedTouches[0].screenX;
-      handleHeroSwipe(heroElement);
+      if (!tracking) return;
+      endX = e.touches[0].clientX;
+      endY = e.touches[0].clientY;
     },
-    false,
+    { passive: true },
   );
 
-  // Also support mouse drag
+  heroElement.addEventListener("touchend", () => {
+    if (!tracking) return;
+    tracking = false;
+    handleHeroSwipe(heroElement, startX - endX, startY - endY);
+  });
+  heroElement.addEventListener("touchcancel", () => {
+    tracking = false;
+  });
+
+  // Arrastre con mouse (escritorio)
   let isMouseDown = false;
   let mouseStartX = 0;
-
+  let mouseStartY = 0;
   heroElement.addEventListener("mousedown", (e) => {
     isMouseDown = true;
     mouseStartX = e.clientX;
+    mouseStartY = e.clientY;
   });
-
-  heroElement.addEventListener("mousemove", (e) => {
-    if (!isMouseDown) return;
-    touchEndX = e.clientX;
-  });
-
   heroElement.addEventListener("mouseup", (e) => {
     if (!isMouseDown) return;
     isMouseDown = false;
-    touchStartX = mouseStartX;
-    handleHeroSwipe(heroElement);
+    handleHeroSwipe(heroElement, mouseStartX - e.clientX, mouseStartY - e.clientY);
+  });
+  heroElement.addEventListener("mouseleave", () => {
+    isMouseDown = false;
   });
 
-  function handleHeroSwipe(element) {
+  function handleHeroSwipe(element, diffX, diffY) {
     const state = heroStates.get(element);
-    if (!state) return;
+    if (!state || !state.slides || state.slides.length < 2) return;
+    if (Math.abs(diffX) < 50) return; // toque o movimiento corto
+    if (Math.abs(diffY) > Math.abs(diffX) * 0.7) return; // era scroll vertical
 
-    const swipeThreshold = 50;
-    const diff = touchStartX - touchEndX;
-
-    if (Math.abs(diff) > swipeThreshold) {
-      if (diff > 0) {
-        // Swipe left - next slide
-        goToHeroSlideForElement(
-          element,
-          (state.currentSlide + 1) % state.slides.length,
-          true,
-        );
-      } else {
-        // Swipe right - previous slide
-        goToHeroSlideForElement(
-          element,
-          (state.currentSlide - 1 + state.slides.length) % state.slides.length,
-          true,
-        );
-      }
+    if (diffX > 0) {
+      goToHeroSlideForElement(element, (state.currentSlide + 1) % state.slides.length, true);
+    } else {
+      goToHeroSlideForElement(
+        element,
+        (state.currentSlide - 1 + state.slides.length) % state.slides.length,
+        true,
+      );
     }
   }
 }
@@ -9880,6 +9923,9 @@ const swipeNavigation = {
   verticalThreshold: 50, // Distancia máxima vertical para considerar un swipe horizontal puro
 
   init() {
+    // Evitar listeners duplicados (init se llamaba 2 veces)
+    if (this._initialized) return;
+    this._initialized = true;
     // Agregar listeners de touch al documento
     document.addEventListener("touchstart", (e) => this.handleTouchStart(e));
     document.addEventListener("touchend", (e) => this.handleTouchEnd(e));
@@ -9912,10 +9958,17 @@ const swipeNavigation = {
     }
 
     // Solo registrar si el usuario toca con un dedo
-    if (e.touches.length !== 1) return;
+    // (antes no se bloqueaba y el siguiente toque usaba coordenadas viejas)
+    if (e.touches.length !== 1) {
+      this.isTouchingCategory = true;
+      return;
+    }
 
     // No activar si se está usando una entrada de texto
-    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+    if (e.target.closest?.("input, textarea, select, [contenteditable]")) {
+      this.isTouchingCategory = true;
+      return;
+    }
 
     // No activar si estamos en la sección de TV — tiene scroll/swipe propio
     if (typeof currentView !== "undefined" && currentView === "tv") {
@@ -9935,16 +9988,11 @@ const swipeNavigation = {
       return;
     }
 
-    // No activar si el toque comienza en el hero o sliders
-    const heroElement = e.target.closest(".hero, .hero-slide, .hero-container");
-    const categoriesSection = e.target.closest(
-      ".categories-section, .categories-container",
-    );
-    const contentSlider = e.target.closest(
-      ".content-slider, .slider-container, .content-row",
-    );
-
-    if (heroElement || categoriesSection || contentSlider) {
+    // No activar sobre elementos que tienen su propio deslizamiento:
+    // hero, carruseles de imagen y cualquier fila que realmente se desplace
+    // de lado. Los títulos de las filas y los espacios entre carruseles SÍ
+    // cambian de sección (antes se bloqueaba la fila completa).
+    if (sfHasOwnHorizontalGesture(e.target)) {
       this.isTouchingCategory = true;
       return;
     }
@@ -9966,8 +10014,15 @@ const swipeNavigation = {
       return;
     }
 
+    // Revalidar: si durante el gesto se cambió a Perfil, Gestión, etc., no navegar
+    const activeNow = document.querySelector(".page-view.active");
+    if (!activeNow || !this.sections.includes(activeNow.id) || !sfIsMainView(currentView)) {
+      return;
+    }
+
     this.touchEndX = e.changedTouches[0].clientX;
     this.touchEndY = e.changedTouches[0].clientY;
+    this.isTouchingCategory = true; // un toque = un gesto como máximo
     this.detectSwipe();
   },
 
@@ -10000,6 +10055,7 @@ const swipeNavigation = {
 
   async navigateNext() {
     // No permitir ir adelante si está en la última sección (Doramas)
+    this.updateCurrentSection();
     if (this.currentSectionIndex >= this.sections.length - 1) {
       console.log("✋ Ya estás en la última sección (Doramas)");
       return;
@@ -10011,6 +10067,7 @@ const swipeNavigation = {
 
   async navigatePrevious() {
     // No permitir ir atrás si está en la primera sección (Home)
+    this.updateCurrentSection();
     if (this.currentSectionIndex <= 0) {
       console.log("✋ Ya estás en la primera sección (Inicio)");
       return;
@@ -10043,7 +10100,14 @@ const swipeNavigation = {
     }
 
     // Llamar a navigateToView para cargar el contenido correctamente
-    await navigateToView(viewName);
+    // (marcado como gesto para que el bloqueo de paneles lo reconozca)
+    sfSwipeNavInProgress = true;
+    try {
+      await navigateToView(viewName);
+    } finally {
+      sfSwipeNavInProgress = false;
+    }
+    this.updateCurrentSection();
 
     // Scroll al inicio después de que el contenido se ha cargado
     window.scrollTo(0, 0);
@@ -12542,4 +12606,82 @@ function sfScheduleHomeRefresh() {
       console.error("Error refrescando la portada:", err);
     }
   }, 900);
+}
+
+
+// ================================================================
+// ████  BLOQUEO DE DESLIZAMIENTO EN PANELES (Perfil, Gestión...)  ████
+// ================================================================
+// Dentro de Perfil, Gestión, Panel de admin, Estadísticas, Conectados o
+// Panel TV, ningún gesto puede llevarte a Inicio/Películas/Series/etc.
+// Solo un clic/toque real (botón Volver, menú inferior, logo...) lo hace.
+
+const SF_MAIN_VIEWS = ["home", "movies", "series", "animes", "doramas"];
+const SF_PANEL_VIEWS = ["profile", "admin", "management", "stats", "connected-users", "tv-admin"];
+let sfSwipeNavInProgress = false;
+let sfLastUserClick = 0;
+
+function sfIsMainView(v) {
+  return SF_MAIN_VIEWS.includes(v);
+}
+
+// Un toque real genera "click"; un deslizamiento no.
+window.addEventListener("click", () => { sfLastUserClick = Date.now(); }, true);
+window.addEventListener("keydown", () => { sfLastUserClick = Date.now(); }, true);
+
+(function sfGuardNavigateToView() {
+  const original = window.navigateToView;
+  if (typeof original !== "function" || original.__sfGuarded) return;
+  const guarded = async function (view, ...rest) {
+    const from = typeof currentView !== "undefined" ? currentView : window.currentView;
+    const panelOpen = SF_PANEL_VIEWS.includes(from);
+    if (panelOpen && sfIsMainView(view) && currentUser) {
+      const fromClick = Date.now() - sfLastUserClick < 1000;
+      if (sfSwipeNavInProgress || !fromClick) {
+        console.log(`✋ Navegación a "${view}" bloqueada: estás en "${from}"`);
+        swipeNavigation?.updateCurrentSection?.();
+        return;
+      }
+    }
+    return original.call(this, view, ...rest);
+  };
+  guarded.__sfGuarded = true;
+  window.navigateToView = guarded;
+})();
+
+
+// ¿El toque empezó sobre algo que ya usa el deslizamiento horizontal?
+function sfHasOwnHorizontalGesture(target) {
+  if (!target || !target.closest) return false;
+
+  // Ventanas, menús y capas encima de la página
+  if (
+    target.closest(
+      ".modal-overlay, .modal-container, .auth-container, .splash-overlay, #sf-offline, " +
+        ".profile-dropdown, header, .bottom-nav, #sf-toast-host, " +
+        "#movie-details-modal-container, #trailer-modal",
+    )
+  )
+    return true;
+
+  // Elementos con deslizamiento propio
+  if (
+    target.closest(
+      ".hero, .hero-slide, .hero-nav, .image-carousel-section, .image-carousel-container, " +
+        ".slider-arrow, [data-sf-own-swipe]",
+    )
+  )
+    return true;
+
+  // Cualquier contenedor que se desplace horizontalmente y tenga de verdad
+  // contenido que desplazar (carruseles, categorías, servicios, etc.)
+  let el = target;
+  while (el && el !== document.body && el !== document.documentElement) {
+    if (el.scrollWidth > el.clientWidth + 2) {
+      const ox = getComputedStyle(el).overflowX;
+      if (ox === "auto" || ox === "scroll") return true;
+    }
+    el = el.parentElement;
+  }
+  return false;
 }
