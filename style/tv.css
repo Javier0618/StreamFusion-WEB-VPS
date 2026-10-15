@@ -28,6 +28,7 @@ body {
 #tabs { display: flex; gap: .4rem; }
 .search-tab { margin-left: auto; display: flex; align-items: center; gap: .45rem; }
 .tab svg { flex: none; width: 1.15rem; height: 1.15rem; fill: currentColor; }
+.search-tab svg { width: 1.3rem; height: 1.3rem; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; }
 .tab { white-space: nowrap; padding: .45rem 1.1rem; border-radius: 2rem; font-size: 1.05rem; font-weight: 600; color: var(--muted); transition: background .12s ease, color .12s ease; }
 .tab.sel { color: var(--text); box-shadow: inset 0 -.18rem 0 var(--accent); border-radius: 0; padding-bottom: .4rem; }
 .tab.focused { color: #fff; background: rgba(255,255,255,.18); box-shadow: 0 0 0 .16rem #fff; border-radius: 2rem; }
@@ -46,7 +47,10 @@ body {
               linear-gradient(rgba(10,15,26,0) 55%, var(--bg) 100%); }
 .hero-body { position: absolute; left: 3rem; bottom: 4.6rem; width: 33rem; }
 .hero-kind { font-size: .85rem; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; color: var(--accent); margin-bottom: .5rem; }
-.hero-body h1 { font-size: 3rem; line-height: 1.05; font-weight: 800; margin-bottom: .7rem; text-shadow: 0 .1rem .6rem rgba(0,0,0,.6); }
+.hero-body h1 { font-size: 3rem; line-height: 1.05; font-weight: 800; margin-bottom: .7rem; text-shadow: 0 .1rem .6rem rgba(0,0,0,.6); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.hero-body h1.t-md { font-size: 2.5rem; }
+.hero-body h1.t-lg { font-size: 2.05rem; }
+.hero-body h1.t-xl { font-size: 1.7rem; line-height: 1.1; }
 .hero-meta { font-size: 1rem; color: #d3dbe8; margin-bottom: .8rem; }
 .hero-meta b { color: #f7c948; }
 .hero-overview { font-size: 1.02rem; color: #dbe2ee; margin-bottom: 1.3rem; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
@@ -98,7 +102,10 @@ body {
 .detail-top { flex: none; display: flex; gap: 1.8rem; }
 .detail-poster { flex: none; width: 7.2rem; }
 .detail-info { flex: 1; min-width: 0; }
-.detail-info h1 { font-size: 2.1rem; line-height: 1.08; margin-bottom: .35rem; }
+.detail-info h1 { font-size: 2.1rem; line-height: 1.08; margin-bottom: .35rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.detail-info h1.t-md { font-size: 1.8rem; }
+.detail-info h1.t-lg { font-size: 1.5rem; }
+.detail-info h1.t-xl { font-size: 1.3rem; }
 .meta { color: var(--muted); font-size: .98rem; margin-bottom: .3rem; }
 .meta b { color: #f7c948; }
 .genres { color: var(--accent); font-size: .92rem; font-weight: 600; margin-bottom: .5rem; }
