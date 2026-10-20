@@ -20,6 +20,16 @@ const PROGRESS_KEY = "sf_vertical_progress"; // { [id]: episodeIndex }
 // Open layer, so that if Android reloads the app in the background we come back to the same place.
 const STATE_KEY = "sf_vertical_state"; // { layer: "catalog"|"player", id?, at }
 const STATE_TTL_MS = 6 * 60 * 60 * 1000;
+const AUTONEXT_KEY = "sf_vertical_autonext"; // "0" = desactivado
+
+// Puente postMessage del reproductor de unlimplayer (el mismo que usa script2.js):
+//   recibe {sf:"player", event:"ready"|"timeupdate"|"ended"|"next", currentTime, duration}
+//   envía  {sf:"config", hasNext, ...}, {sf:"seek", time} y {sf:"play"}
+const PLAYER_ORIGIN = "https://unlimplayer.top";
+let userStarted = false; // the user already pressed play once: later episodes may start on their own
+let autoAdvanced = false; // the current episode came from an automatic jump
+let pendingSeek = null; // { index, t } to resume after Android reloaded the app
+let lastStateSave = 0;
 
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 const db = getFirestore(app);
@@ -65,6 +75,21 @@ function readState() {
     return s && Date.now() - s.at < STATE_TTL_MS ? s : null;
   } catch {
     return null;
+  }
+}
+
+function autoNextOn() {
+  try {
+    return localStorage.getItem(AUTONEXT_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+function setAutoNext(on) {
+  try {
+    localStorage.setItem(AUTONEXT_KEY, on ? "1" : "0");
+  } catch {
+    /* almacenamiento no disponible */
   }
 }
 
@@ -294,7 +319,9 @@ function ensurePlayer() {
       <button type="button" data-act="prev" aria-label="Anterior"><i class="fa-solid fa-chevron-up"></i></button>
       <button type="button" data-act="list" aria-label="Episodios"><i class="fa-solid fa-list-ol"></i><span>Eps</span></button>
       <button type="button" data-act="next" aria-label="Siguiente"><i class="fa-solid fa-chevron-down"></i></button>
+      <button type="button" data-act="auto" aria-label="Pasar solo al siguiente episodio"><i class="fa-solid fa-forward"></i><span>Auto</span></button>
     </div>
+    <div class="sfv-toast" aria-live="polite"></div>
     <div class="sfv-sheet" aria-hidden="true">
       <div class="sfv-sheet-panel">
         <div class="sfv-sheet-head"><strong>Episodios</strong><button type="button" class="sfv-icon-btn" data-act="sheet-close" aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button></div>
@@ -305,6 +332,15 @@ function ensurePlayer() {
   playerEl.querySelector('[data-act="prev"]').addEventListener("click", () => goTo(current.index - 1));
   playerEl.querySelector('[data-act="next"]').addEventListener("click", () => goTo(current.index + 1));
   playerEl.querySelector('[data-act="list"]').addEventListener("click", openSheet);
+  const autoBtn = playerEl.querySelector('[data-act="auto"]');
+  autoBtn.classList.toggle("on", autoNextOn());
+  autoBtn.addEventListener("click", () => {
+    const on = !autoNextOn();
+    setAutoNext(on);
+    autoBtn.classList.toggle("on", on);
+    sendConfig();
+    toast(on ? "Pase automático activado" : "Pase automático desactivado");
+  });
   playerEl.querySelector('[data-act="sheet-close"]').addEventListener("click", closeSheet);
   playerEl.querySelector(".sfv-sheet").addEventListener("click", (e) => {
     if (e.target.classList.contains("sfv-sheet")) closeSheet();
@@ -314,6 +350,7 @@ function ensurePlayer() {
 }
 
 let observer = null;
+let ignoreObserverUntil = 0;
 function openPlayer(item) {
   ensurePlayer();
   const episodes = episodesOf(item);
@@ -351,6 +388,7 @@ function openPlayer(item) {
   observer = new IntersectionObserver(
     (entries) => {
       for (const e of entries) {
+        if (document.hidden || Date.now() < ignoreObserverUntil) continue;
         if (e.isIntersecting && e.intersectionRatio >= 0.6) activate(Number(e.target.dataset.i));
       }
     },
@@ -393,12 +431,111 @@ function activate(i) {
   saveProgress(current.item.id, i);
 }
 
+// ── puente con el reproductor ──
+function activeIframe() {
+  return playerEl?.querySelector(`.sfv-slide[data-i="${current?.index}"] iframe`) || null;
+}
+function post(msg) {
+  const iframe = activeIframe();
+  if (!iframe?.contentWindow) return;
+  try {
+    iframe.contentWindow.postMessage(msg, new URL(iframe.src).origin);
+  } catch {
+    /* iframe de otro reproductor o aún sin cargar */
+  }
+}
+function sendConfig() {
+  if (!current) return;
+  post({
+    sf: "config",
+    hasNext: autoNextOn() && current.index < current.episodes.length - 1,
+    showBeforeEnd: 0, // episodios cortos: sin aviso, cambia al terminar
+    countdown: 3,
+    autoSkipIntro: false,
+  });
+}
+
+let toastTimer = null;
+function toast(text) {
+  const el = playerEl?.querySelector(".sfv-toast");
+  if (!el) return;
+  el.textContent = text;
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), 1800);
+}
+
+function goNextAuto() {
+  if (!current || !autoNextOn()) return;
+  const next = current.index + 1;
+  if (next >= current.episodes.length) {
+    toast("Fin de la serie");
+    return;
+  }
+  autoAdvanced = true;
+  toast(`Episodio ${current.episodes[next].number}`);
+  goTo(next);
+}
+
+window.addEventListener("message", (ev) => {
+  if (ev.origin !== PLAYER_ORIGIN || !current) return;
+  const iframe = activeIframe();
+  if (!iframe || ev.source !== iframe.contentWindow) return;
+  const d = ev.data;
+  if (!d || typeof d !== "object" || d.sf !== "player") return;
+  const t = Number(d.currentTime);
+
+  if (d.event === "ready") {
+    sendConfig();
+    if (pendingSeek && pendingSeek.index === current.index && pendingSeek.t > 3) {
+      post({ sf: "seek", time: pendingSeek.t });
+    }
+    pendingSeek = null;
+    // After an automatic jump (or once the user already started watching) play without another tap.
+    if (autoAdvanced || userStarted) post({ sf: "play" });
+    autoAdvanced = false;
+  } else if (d.event === "timeupdate" && Number.isFinite(t)) {
+    if (t > 0) userStarted = true;
+    if (Date.now() - lastStateSave > 5000) {
+      lastStateSave = Date.now();
+      saveState({ layer: "player", id: current.item.id, t: Math.floor(t) });
+    }
+  } else if (d.event === "ended" || d.event === "next") {
+    goNextAuto();
+  }
+});
+
 function goTo(i, smooth = true) {
   if (!current || i < 0 || i >= current.episodes.length) return;
   const slide = playerEl.querySelector(`.sfv-slide[data-i="${i}"]`);
   slide?.scrollIntoView({ behavior: smooth ? "smooth" : "instant", block: "start" });
-  if (!smooth) activate(i);
+  if (!smooth) {
+    activate(i);
+    return;
+  }
+  // Some WebViews drop the smooth scroll (or never fire the observer): jump directly.
+  setTimeout(() => {
+    if (current && current.index !== i) {
+      snapToCurrent(i);
+      activate(i);
+    }
+  }, 1000);
 }
+
+/** Place the feed exactly on slide i (no animation). */
+function snapToCurrent(i = current?.index) {
+  const feed = playerEl?.querySelector(".sfv-feed");
+  const slide = playerEl?.querySelector(`.sfv-slide[data-i="${i}"]`);
+  if (feed && slide) feed.scrollTop = slide.offsetTop;
+}
+
+// When coming back from the background the scroll position may have been lost: without
+// this, the observer would see the first slide and jump back to episode 1.
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden || !current || !playerEl?.classList.contains("open")) return;
+  ignoreObserverUntil = Date.now() + 800;
+  snapToCurrent();
+});
 
 function openSheet() {
   const sheet = playerEl.querySelector(".sfv-sheet");
@@ -419,6 +556,8 @@ function closePlayer(fromHistory = false) {
   closeSheet();
   playerEl.classList.remove("open");
   current = null;
+  autoAdvanced = false;
+  pendingSeek = null;
   if (!catalogEl?.classList.contains("open")) {
     lockScroll(false);
     saveState(null);
@@ -447,7 +586,11 @@ async function init() {
     if (state && list.length) {
       await openCatalog();
       const item = state.layer === "player" && list.find((x) => x.id === state.id);
-      if (item) openPlayer(item);
+      if (item) {
+        const index = readProgress()[item.id];
+        if (index != null && state.t) pendingSeek = { index, t: state.t };
+        openPlayer(item);
+      }
     }
   } catch (err) {
     console.warn("[vertical] catálogo no disponible", err);
