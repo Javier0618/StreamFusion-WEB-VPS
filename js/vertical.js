@@ -17,6 +17,9 @@ import { firebaseConfig } from "./config.js";
 const COLLECTION = "vertical_content";
 const MAX_ITEMS = 80;
 const PROGRESS_KEY = "sf_vertical_progress"; // { [id]: episodeIndex }
+// Open layer, so that if Android reloads the app in the background we come back to the same place.
+const STATE_KEY = "sf_vertical_state"; // { layer: "catalog"|"player", id?, at }
+const STATE_TTL_MS = 6 * 60 * 60 * 1000;
 
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 const db = getFirestore(app);
@@ -45,6 +48,23 @@ function saveProgress(id, index) {
     localStorage.setItem(PROGRESS_KEY, JSON.stringify(p));
   } catch {
     /* almacenamiento no disponible */
+  }
+}
+
+function saveState(state) {
+  try {
+    if (state) localStorage.setItem(STATE_KEY, JSON.stringify({ ...state, at: Date.now() }));
+    else localStorage.removeItem(STATE_KEY);
+  } catch {
+    /* almacenamiento no disponible */
+  }
+}
+function readState() {
+  try {
+    const s = JSON.parse(localStorage.getItem(STATE_KEY) || "null");
+    return s && Date.now() - s.at < STATE_TTL_MS ? s : null;
+  } catch {
+    return null;
   }
 }
 
@@ -95,21 +115,55 @@ async function loadItems() {
   }
 }
 
-// Botón atrás de Android / navegador: cierra la capa abierta en vez de salir.
+// Botón atrás del navegador: cierra la capa abierta en vez de salir.
+// Each open layer pushes a history entry; closing it from a button removes it
+// with history.back(), and that popstate must not close the layer below.
 let historyDepth = 0;
+let selfPops = 0;
 function pushLayer(name) {
   history.pushState({ sfVertical: name }, "");
   historyDepth++;
 }
 function popLayer() {
-  if (historyDepth > 0) history.back();
+  if (historyDepth <= 0) return;
+  selfPops++;
+  history.back();
 }
 window.addEventListener("popstate", () => {
   if (historyDepth <= 0) return;
   historyDepth--;
-  if (playerEl?.classList.contains("open")) closePlayer(true);
+  if (selfPops > 0) {
+    selfPops--;
+    return;
+  }
+  if (playerEl?.querySelector(".sfv-sheet.open")) {
+    closeSheet();
+    pushLayer("player"); // the sheet has no entry of its own: keep the player's
+  } else if (playerEl?.classList.contains("open")) closePlayer(true);
   else if (catalogEl?.classList.contains("open")) closeCatalog(true);
 });
+
+/**
+ * Botón atrás nativo de Android (MainActivity llama a esto antes de cerrar la app).
+ * Devuelve true si cerró algo de la sección vertical.
+ */
+function handleBack() {
+  if (playerEl?.querySelector(".sfv-sheet.open")) {
+    closeSheet();
+    return true;
+  }
+  if (playerEl?.classList.contains("open")) {
+    closePlayer();
+    return true;
+  }
+  if (catalogEl?.classList.contains("open")) {
+    closeCatalog();
+    return true;
+  }
+  return false;
+}
+const previousBackHandler = window.sfHandleBack;
+window.sfHandleBack = () => handleBack() || (typeof previousBackHandler === "function" && previousBackHandler()) || false;
 
 function lockScroll(on) {
   document.documentElement.classList.toggle("sfv-lock", on);
@@ -202,6 +256,7 @@ async function openCatalog() {
   catalogEl.classList.add("open");
   lockScroll(true);
   pushLayer("catalog");
+  if (!playerEl?.classList.contains("open")) saveState({ layer: "catalog" });
   try {
     renderCatalog(await loadItems());
   } catch (err) {
@@ -220,6 +275,7 @@ function closeCatalog(fromHistory = false) {
   if (!catalogEl?.classList.contains("open")) return;
   catalogEl.classList.remove("open");
   lockScroll(false);
+  saveState(null);
   if (!fromHistory) popLayer();
 }
 
@@ -305,6 +361,7 @@ function openPlayer(item) {
   playerEl.classList.add("open");
   lockScroll(true);
   pushLayer("player");
+  saveState({ layer: "player", id: item.id });
   feed.scrollTop = 0;
   requestAnimationFrame(() => goTo(start, false));
   if (start === 0) activate(0);
@@ -362,8 +419,13 @@ function closePlayer(fromHistory = false) {
   closeSheet();
   playerEl.classList.remove("open");
   current = null;
-  if (!catalogEl?.classList.contains("open")) lockScroll(false);
-  else if (items) renderCatalog(items); // refresca "Continuar"
+  if (!catalogEl?.classList.contains("open")) {
+    lockScroll(false);
+    saveState(null);
+  } else {
+    saveState({ layer: "catalog" });
+    if (items) renderCatalog(items); // refresca "Continuar"
+  }
   if (!fromHistory) popLayer();
 }
 
@@ -380,6 +442,13 @@ async function init() {
   try {
     const list = await loadItems();
     if (list.length) mountFab();
+    // Android reloaded the app while it was minimized: go back to where the user was.
+    const state = readState();
+    if (state && list.length) {
+      await openCatalog();
+      const item = state.layer === "player" && list.find((x) => x.id === state.id);
+      if (item) openPlayer(item);
+    }
   } catch (err) {
     console.warn("[vertical] catálogo no disponible", err);
   }
