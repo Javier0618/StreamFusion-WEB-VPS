@@ -1,0 +1,547 @@
+/* ─── Series verticales (vertical.js) ─────────────────────────────────────── */
+:root {
+  --sfv-accent: #ff6b00;
+  --sfv-accent-2: #ff2d7a;
+  --sfv-bg: #07090f;
+  --sfv-glass: rgba(14, 16, 24, 0.72);
+  --sfv-line: rgba(255, 255, 255, 0.1);
+}
+
+html.sfv-lock,
+html.sfv-lock body {
+  overflow: hidden !important;
+}
+
+/* ── botón flotante ── */
+#sfv-fab {
+  position: fixed;
+  right: 14px;
+  bottom: calc(92px + env(safe-area-inset-bottom, 0px));
+  z-index: 1001;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 16px 11px 14px;
+  border: 0;
+  border-radius: 999px;
+  color: #fff;
+  font: 700 0.82rem/1 inherit;
+  letter-spacing: 0.02em;
+  background: linear-gradient(135deg, var(--sfv-accent), var(--sfv-accent-2));
+  box-shadow: 0 10px 28px rgba(255, 60, 60, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(20px) scale(0.9);
+  transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+#sfv-fab.show {
+  opacity: 1;
+  transform: none;
+}
+#sfv-fab:active {
+  transform: scale(0.94);
+}
+#sfv-fab i {
+  font-size: 1.05rem;
+}
+.sfv-fab-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: 0 0 0 0 rgba(255, 90, 40, 0.6);
+  animation: sfv-pulse 2.4s infinite;
+  pointer-events: none;
+}
+@keyframes sfv-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(255, 90, 40, 0.55); }
+  70% { box-shadow: 0 0 0 14px rgba(255, 90, 40, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 90, 40, 0); }
+}
+
+/* ── catálogo ── */
+#sfv-catalog {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(120% 60% at 100% 0%, rgba(255, 45, 122, 0.18), transparent 60%),
+    radial-gradient(120% 60% at 0% 0%, rgba(255, 107, 0, 0.18), transparent 60%),
+    var(--sfv-bg);
+  color: #fff;
+  transform: translateY(100%);
+  transition: transform 0.38s cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+#sfv-catalog.open {
+  transform: none;
+}
+.sfv-cat-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: calc(14px + env(safe-area-inset-top, 0px)) 16px 12px;
+}
+.sfv-cat-title h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 800;
+  background: linear-gradient(90deg, #fff, #ffb27a);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.sfv-cat-title p {
+  margin: 2px 0 0;
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+.sfv-cat-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 16px calc(24px + env(safe-area-inset-bottom, 0px));
+  -webkit-overflow-scrolling: touch;
+}
+.sfv-icon-btn {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border: 1px solid var(--sfv-line);
+  border-radius: 50%;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(10px);
+  cursor: pointer;
+}
+
+.sfv-hero {
+  position: relative;
+  display: flex;
+  gap: 14px;
+  padding: 14px;
+  margin-bottom: 18px;
+  border: 1px solid var(--sfv-line);
+  border-radius: 20px;
+  overflow: hidden;
+  cursor: pointer;
+  isolation: isolate;
+}
+.sfv-hero::before {
+  content: "";
+  position: absolute;
+  inset: -20px;
+  z-index: -1;
+  background: var(--bg) center / cover;
+  filter: blur(26px) brightness(0.45) saturate(1.3);
+}
+.sfv-hero img {
+  width: 42%;
+  max-width: 180px;
+  aspect-ratio: 9 / 16;
+  object-fit: cover;
+  border-radius: 14px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
+}
+.sfv-hero-info {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-width: 0;
+}
+.sfv-hero-info h3 {
+  margin: 8px 0 6px;
+  font-size: 1.15rem;
+  line-height: 1.2;
+}
+.sfv-hero-info p {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: #d1d5db;
+}
+.sfv-meta {
+  margin-bottom: 12px;
+  font-size: 0.72rem;
+  color: #fbbf8a;
+}
+.sfv-chip {
+  align-self: flex-start;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: linear-gradient(135deg, var(--sfv-accent), var(--sfv-accent-2));
+}
+.sfv-play-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 16px;
+  border: 0;
+  border-radius: 12px;
+  color: #111;
+  font-weight: 800;
+  font-size: 0.85rem;
+  background: #fff;
+  cursor: pointer;
+}
+
+.sfv-row-title {
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+}
+.sfv-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (min-width: 700px) {
+  .sfv-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+}
+.sfv-card {
+  position: relative;
+  display: block;
+  padding: 0;
+  border: 0;
+  aspect-ratio: 9 / 16;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #151821;
+  cursor: pointer;
+  text-align: left;
+}
+.sfv-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.4s ease;
+}
+.sfv-card:active img {
+  transform: scale(1.05);
+}
+.sfv-card::after {
+  content: "";
+  position: absolute;
+  inset: 45% 0 0;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.9));
+}
+.sfv-card-title {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 10px;
+  z-index: 1;
+  color: #fff;
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1.2;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.sfv-badge {
+  position: absolute;
+  top: 7px;
+  left: 7px;
+  z-index: 1;
+  padding: 3px 7px;
+  border-radius: 8px;
+  font-size: 0.62rem;
+  font-weight: 800;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(6px);
+}
+.sfv-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.2);
+}
+.sfv-progress i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--sfv-accent), var(--sfv-accent-2));
+}
+.sfv-skel {
+  background: linear-gradient(100deg, #151821 30%, #222633 50%, #151821 70%) 0 0 / 300% 100%;
+  animation: sfv-shine 1.3s linear infinite;
+}
+@keyframes sfv-shine {
+  to { background-position: -150% 0; }
+}
+.sfv-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 60px 20px;
+  color: #9ca3af;
+  text-align: center;
+}
+.sfv-empty i {
+  font-size: 2.2rem;
+  color: var(--sfv-accent);
+}
+
+/* ── reproductor ── */
+#sfv-player {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  background: #000;
+  color: #fff;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.25s ease, visibility 0.25s;
+}
+#sfv-player.open {
+  opacity: 1;
+  visibility: visible;
+}
+.sfv-feed {
+  height: 100%;
+  overflow-y: scroll;
+  scroll-snap-type: y mandatory;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+.sfv-feed::-webkit-scrollbar {
+  display: none;
+}
+.sfv-slide {
+  position: relative;
+  height: 100%;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  overflow: hidden;
+  isolation: isolate;
+}
+.sfv-slide::before {
+  content: "";
+  position: absolute;
+  inset: -30px;
+  z-index: -1;
+  background: var(--bg) center / cover;
+  filter: blur(30px) brightness(0.35);
+}
+.sfv-frame {
+  position: absolute;
+  /* The cross-origin iframe swallows touches: the strip below it stays part of
+     the feed so a swipe there changes episode. */
+  inset: 0 0 calc(56px + env(safe-area-inset-bottom, 0px)) 0;
+  display: grid;
+  place-items: center;
+}
+.sfv-frame iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #000;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.sfv-frame.ready iframe {
+  opacity: 1;
+}
+.sfv-loader {
+  width: 42px;
+  height: 42px;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-top-color: var(--sfv-accent);
+  border-radius: 50%;
+  animation: sfv-spin 0.8s linear infinite;
+}
+@keyframes sfv-spin {
+  to { transform: rotate(360deg); }
+}
+/* La info se ve mientras carga y se aparta cuando el vídeo está listo. */
+.sfv-slide-info {
+  position: absolute;
+  left: 16px;
+  right: 76px;
+  bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+  z-index: 2;
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+}
+.sfv-slide-info h3 {
+  margin: 8px 0 4px;
+  font-size: 1.05rem;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+}
+.sfv-slide-info p {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #e5e7eb;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8);
+}
+.sfv-frame.ready ~ .sfv-slide-info {
+  opacity: 0;
+}
+.sfv-hint {
+  position: absolute;
+  left: 50%;
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  z-index: 2;
+  transform: translateX(-50%);
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  white-space: nowrap;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+  animation: sfv-bob 2s ease-in-out infinite;
+}
+.sfv-hint.end {
+  animation: none;
+  opacity: 0.7;
+}
+@keyframes sfv-bob {
+  50% { transform: translate(-50%, -5px); }
+}
+.sfv-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 18px;
+  background: linear-gradient(rgba(0, 0, 0, 0.7), transparent);
+  pointer-events: none;
+}
+.sfv-top > * {
+  pointer-events: auto;
+}
+.sfv-top-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.sfv-top-title strong {
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sfv-top-title span {
+  font-size: 0.72rem;
+  color: #fbbf8a;
+}
+.sfv-side {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transform: translateY(-50%);
+}
+.sfv-side button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 46px;
+  height: 46px;
+  border: 1px solid var(--sfv-line);
+  border-radius: 50%;
+  color: #fff;
+  font-size: 1rem;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(10px);
+  cursor: pointer;
+}
+.sfv-side button span {
+  font-size: 0.55rem;
+  font-weight: 700;
+}
+.sfv-side button[data-act="list"] {
+  width: 52px;
+  height: 52px;
+  border: 0;
+  background: linear-gradient(135deg, var(--sfv-accent), var(--sfv-accent-2));
+}
+.sfv-side button:disabled {
+  opacity: 0.3;
+}
+
+/* ── hoja de episodios ── */
+.sfv-sheet {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(0, 0, 0, 0);
+  pointer-events: none;
+  transition: background 0.3s ease;
+}
+.sfv-sheet.open {
+  background: rgba(0, 0, 0, 0.55);
+  pointer-events: auto;
+}
+.sfv-sheet-panel {
+  width: 100%;
+  max-height: 62%;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px calc(18px + env(safe-area-inset-bottom, 0px));
+  border-radius: 22px 22px 0 0;
+  border-top: 1px solid var(--sfv-line);
+  background: var(--sfv-glass);
+  backdrop-filter: blur(18px);
+  transform: translateY(100%);
+  transition: transform 0.32s cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+.sfv-sheet.open .sfv-sheet-panel {
+  transform: none;
+}
+.sfv-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.sfv-sheet-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  overflow-y: auto;
+}
+.sfv-sheet-grid button {
+  aspect-ratio: 1;
+  border: 1px solid var(--sfv-line);
+  border-radius: 12px;
+  color: #fff;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+}
+.sfv-sheet-grid button.active {
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--sfv-accent), var(--sfv-accent-2));
+  box-shadow: 0 6px 18px rgba(255, 60, 60, 0.4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #sfv-fab, #sfv-catalog, .sfv-sheet-panel, .sfv-hint, .sfv-fab-ring { transition: none; animation: none; }
+}
