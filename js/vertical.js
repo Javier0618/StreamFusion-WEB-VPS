@@ -192,6 +192,16 @@ function handleBack() {
 const previousBackHandler = window.sfHandleBack;
 window.sfHandleBack = () => handleBack() || (typeof previousBackHandler === "function" && previousBackHandler()) || false;
 
+/**
+ * The main app changes section (Inicio → Películas…) with swipes it listens to on
+ * `document`. The gestures inside verticals must not reach it.
+ */
+function isolateGestures(el) {
+  for (const type of ["touchstart", "touchmove", "touchend", "touchcancel"]) {
+    el.addEventListener(type, (e) => e.stopPropagation(), { passive: true });
+  }
+}
+
 function lockScroll(on) {
   document.documentElement.classList.toggle("sfv-lock", on);
 }
@@ -228,6 +238,7 @@ function ensureCatalog() {
   if (catalogEl) return catalogEl;
   catalogEl = document.createElement("div");
   catalogEl.id = "sfv-catalog";
+  isolateGestures(catalogEl);
   catalogEl.innerHTML = `
     <div class="sfv-cat-head">
       <button type="button" class="sfv-icon-btn" data-act="close" aria-label="Cerrar"><i class="fa-solid fa-arrow-left"></i></button>
@@ -235,11 +246,10 @@ function ensureCatalog() {
         <h2>Verticales</h2>
         <p>Dramas cortos · desliza para el siguiente</p>
       </div>
-      <button type="button" class="sfv-icon-btn" data-act="search" aria-label="Buscar"><i class="fa-solid fa-magnifying-glass"></i></button>
     </div>
-    <div class="sfv-search">
+    <div class="sfv-search open">
       <i class="fa-solid fa-magnifying-glass"></i>
-      <input type="search" placeholder="Buscar series…" enterkeyhint="search" autocomplete="off" />
+      <input type="search" placeholder="Buscar series, géneros…" enterkeyhint="search" autocomplete="off" />
       <button type="button" data-act="search-clear" aria-label="Limpiar"><i class="fa-solid fa-xmark"></i></button>
     </div>
     <div class="sfv-chips" role="tablist"></div>
@@ -247,23 +257,20 @@ function ensureCatalog() {
   catalogEl.querySelector('[data-act="close"]').addEventListener("click", () => closeCatalog());
   const search = catalogEl.querySelector(".sfv-search");
   const input = search.querySelector("input");
-  catalogEl.querySelector('[data-act="search"]').addEventListener("click", () => {
-    const open = !search.classList.contains("open");
-    search.classList.toggle("open", open);
-    if (open) input.focus();
-    else if (catQuery) {
-      input.value = catQuery = "";
-      if (items) renderCatalog(items);
-    }
-  });
   input.addEventListener("input", () => {
     catQuery = input.value.trim();
+    search.classList.toggle("has-text", !!catQuery);
     if (items) renderCatalog(items);
+  });
+  // Enter closes the keyboard so the results are visible.
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") input.blur();
   });
   search.querySelector('[data-act="search-clear"]').addEventListener("click", () => {
     input.value = catQuery = "";
-    search.classList.remove("open");
+    search.classList.remove("has-text");
     if (items) renderCatalog(items);
+    input.focus();
   });
   // One listener for cards, banners, chips and "Ver todo".
   catalogEl.addEventListener("click", (e) => {
@@ -480,6 +487,7 @@ function ensurePlayer() {
   if (playerEl) return playerEl;
   playerEl = document.createElement("div");
   playerEl.id = "sfv-player";
+  isolateGestures(playerEl);
   playerEl.innerHTML = `
     <div class="sfv-feed"></div>
     <div class="sfv-top">
