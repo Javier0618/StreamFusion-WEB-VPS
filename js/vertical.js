@@ -18,6 +18,8 @@ const COLLECTION = "vertical_content";
 const MAX_ITEMS = 80;
 const PROGRESS_KEY = "sf_vertical_progress"; // { [id]: episodeIndex }
 // Open layer, so that if Android reloads the app in the background we come back to the same place.
+// sessionStorage: survives when Android reloads the page in the background, but is cleared
+// when the app is closed from recents (opening it again starts at home).
 const STATE_KEY = "sf_vertical_state"; // { layer: "catalog"|"player", id?, at }
 const STATE_TTL_MS = 6 * 60 * 60 * 1000;
 const AUTONEXT_KEY = "sf_vertical_autonext"; // "0" = desactivado
@@ -63,15 +65,15 @@ function saveProgress(id, index) {
 
 function saveState(state) {
   try {
-    if (state) localStorage.setItem(STATE_KEY, JSON.stringify({ ...state, at: Date.now() }));
-    else localStorage.removeItem(STATE_KEY);
+    if (state) sessionStorage.setItem(STATE_KEY, JSON.stringify({ ...state, at: Date.now() }));
+    else sessionStorage.removeItem(STATE_KEY);
   } catch {
     /* almacenamiento no disponible */
   }
 }
 function readState() {
   try {
-    const s = JSON.parse(localStorage.getItem(STATE_KEY) || "null");
+    const s = JSON.parse(sessionStorage.getItem(STATE_KEY) || "null");
     return s && Date.now() - s.at < STATE_TTL_MS ? s : null;
   } catch {
     return null;
@@ -208,6 +210,20 @@ function mountFab() {
 }
 
 // ── catálogo ────────────────────────────────────────────────────────────────
+// Organized like short-drama apps: featured carousel, categories,
+// "Seguir viendo", Top, new releases, one row per genre and the full grid.
+let catFilter = "all"; // genre chosen in the chips
+let catQuery = ""; // search box text
+let heroTimer = null;
+
+const tsOf = (v) =>
+  !v ? 0 : typeof v.toMillis === "function" ? v.toMillis() : typeof v.seconds === "number" ? v.seconds * 1000 : Date.parse(v) || 0;
+const norm = (t) =>
+  String(t || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+
 function ensureCatalog() {
   if (catalogEl) return catalogEl;
   catalogEl = document.createElement("div");
@@ -216,62 +232,216 @@ function ensureCatalog() {
     <div class="sfv-cat-head">
       <button type="button" class="sfv-icon-btn" data-act="close" aria-label="Cerrar"><i class="fa-solid fa-arrow-left"></i></button>
       <div class="sfv-cat-title">
-        <h2>Series verticales</h2>
-        <p>Capítulos cortos · desliza para ver el siguiente</p>
+        <h2>Verticales</h2>
+        <p>Dramas cortos · desliza para el siguiente</p>
       </div>
+      <button type="button" class="sfv-icon-btn" data-act="search" aria-label="Buscar"><i class="fa-solid fa-magnifying-glass"></i></button>
     </div>
+    <div class="sfv-search">
+      <i class="fa-solid fa-magnifying-glass"></i>
+      <input type="search" placeholder="Buscar series…" enterkeyhint="search" autocomplete="off" />
+      <button type="button" data-act="search-clear" aria-label="Limpiar"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="sfv-chips" role="tablist"></div>
     <div class="sfv-cat-body"></div>`;
   catalogEl.querySelector('[data-act="close"]').addEventListener("click", () => closeCatalog());
+  const search = catalogEl.querySelector(".sfv-search");
+  const input = search.querySelector("input");
+  catalogEl.querySelector('[data-act="search"]').addEventListener("click", () => {
+    const open = !search.classList.contains("open");
+    search.classList.toggle("open", open);
+    if (open) input.focus();
+    else if (catQuery) {
+      input.value = catQuery = "";
+      if (items) renderCatalog(items);
+    }
+  });
+  input.addEventListener("input", () => {
+    catQuery = input.value.trim();
+    if (items) renderCatalog(items);
+  });
+  search.querySelector('[data-act="search-clear"]').addEventListener("click", () => {
+    input.value = catQuery = "";
+    search.classList.remove("open");
+    if (items) renderCatalog(items);
+  });
+  // One listener for cards, banners, chips and "Ver todo".
+  catalogEl.addEventListener("click", (e) => {
+    const pick = e.target.closest("[data-genre], [data-more]");
+    if (pick) {
+      catFilter = pick.dataset.genre ?? pick.dataset.more;
+      if (items) renderCatalog(items);
+      catalogEl.querySelector(".sfv-cat-body").scrollTop = 0;
+      return;
+    }
+    const card = e.target.closest("[data-id]");
+    if (card && items) {
+      const it = items.find((x) => x.id === card.dataset.id);
+      if (it) openPlayer(it);
+    }
+  });
   document.body.appendChild(catalogEl);
   return catalogEl;
 }
 
+/** Genres sorted by how many series they have. */
+function genreIndex(list) {
+  const map = new Map();
+  for (const it of list) for (const g of genresOf(it)) map.set(g, [...(map.get(g) || []), it]);
+  return [...map.entries()].sort((a, b) => b[1].length - a[1].length);
+}
+
+function card(it, progress, opts = {}) {
+  const eps = episodesOf(it);
+  const at = progress[it.id];
+  const pct = at != null && eps.length ? Math.round(((at + 1) / eps.length) * 100) : 0;
+  const tag = genresOf(it)[0];
+  return `
+    <button type="button" class="sfv-card${opts.rank ? " ranked" : ""}" data-id="${esc(it.id)}">
+      ${opts.rank ? `<span class="sfv-rank">${opts.rank}</span>` : ""}
+      <span class="sfv-card-img">
+        <img src="${esc(it.poster_url)}" alt="" loading="lazy" />
+        <span class="sfv-badge">${eps.length} ep.</span>
+        ${opts.isNew ? `<span class="sfv-new">NUEVO</span>` : ""}
+        ${pct ? `<span class="sfv-progress"><i style="width:${pct}%"></i></span>` : ""}
+      </span>
+      <span class="sfv-card-title">${esc(it.title)}</span>
+      ${
+        opts.continueEp
+          ? `<span class="sfv-card-sub">Ep. ${opts.continueEp} de ${eps.length}</span>`
+          : tag
+            ? `<span class="sfv-card-sub">${esc(tag)}</span>`
+            : ""
+      }
+    </button>`;
+}
+
+function row(title, list, progress, opts = {}) {
+  if (!list.length) return "";
+  return `
+    <section class="sfv-row">
+      <div class="sfv-row-head">
+        <h4>${opts.icon ? `<i class="${opts.icon}"></i> ` : ""}${esc(title)}</h4>
+        ${opts.more ? `<button type="button" class="sfv-more" data-more="${esc(opts.more)}">Ver todo <i class="fa-solid fa-chevron-right"></i></button>` : ""}
+      </div>
+      <div class="sfv-scroller">
+        ${list.map((it, i) => card(it, progress, opts.cardOpts ? opts.cardOpts(it, i) : {})).join("")}
+      </div>
+    </section>`;
+}
+
+function heroCarousel(list, progress) {
+  const slides = list
+    .map((it) => {
+      const eps = episodesOf(it);
+      const at = progress[it.id];
+      const genres = genresOf(it).slice(0, 3);
+      const overview = it.overview || "";
+      return `
+      <article class="sfv-banner" data-id="${esc(it.id)}" style="--bg:url('${esc(it.poster_url)}')">
+        <img class="sfv-banner-poster" src="${esc(it.poster_url)}" alt="" loading="lazy" />
+        <div class="sfv-banner-info">
+          ${genres.length ? `<div class="sfv-tags">${genres.map((g) => `<span>${esc(g)}</span>`).join("")}</div>` : ""}
+          <h3>${esc(it.title)}</h3>
+          <p>${esc(overview.slice(0, 110))}${overview.length > 110 ? "…" : ""}</p>
+          <span class="sfv-play-btn"><i class="fa-solid fa-play"></i> ${
+            at != null ? `Continuar ep. ${eps[at]?.number ?? 1}` : `Ver ahora · ${eps.length} ep.`
+          }</span>
+        </div>
+      </article>`;
+    })
+    .join("");
+  const dots =
+    list.length > 1 ? `<div class="sfv-dots">${list.map((_, i) => `<i class="${i ? "" : "on"}"></i>`).join("")}</div>` : "";
+  return `<div class="sfv-hero-wrap"><div class="sfv-banners">${slides}</div>${dots}</div>`;
+}
+
+function startHeroAutoplay() {
+  clearInterval(heroTimer);
+  const track = catalogEl?.querySelector(".sfv-banners");
+  const dots = catalogEl?.querySelectorAll(".sfv-dots i");
+  if (!track || !dots || dots.length < 2) return;
+  const indexNow = () => Math.round(track.scrollLeft / Math.max(1, track.clientWidth));
+  track.addEventListener("scroll", () => dots.forEach((d, i) => d.classList.toggle("on", i === indexNow())), {
+    passive: true,
+  });
+  heroTimer = setInterval(() => {
+    if (!catalogEl.classList.contains("open") || playerEl?.classList.contains("open") || document.hidden) return;
+    const next = (indexNow() + 1) % dots.length;
+    track.scrollTo({ left: next * track.clientWidth, behavior: "smooth" });
+  }, 5000);
+}
+
+function renderChips(genres) {
+  const chips = catalogEl.querySelector(".sfv-chips");
+  const all = [["all", "Todo"], ...genres.slice(0, 14).map(([g]) => [g, g])];
+  chips.innerHTML = all
+    .map(
+      ([k, label]) =>
+        `<button type="button" role="tab" data-genre="${esc(k)}" class="${catFilter === k ? "on" : ""}">${esc(label)}</button>`,
+    )
+    .join("");
+  chips.querySelector(".on")?.scrollIntoView({ inline: "center", block: "nearest" });
+}
+
 function renderCatalog(list) {
   const body = catalogEl.querySelector(".sfv-cat-body");
+  clearInterval(heroTimer);
   if (!list.length) {
+    catalogEl.querySelector(".sfv-chips").innerHTML = "";
     body.innerHTML = `<div class="sfv-empty"><i class="fa-solid fa-clapperboard"></i><p>Aún no hay series verticales.</p></div>`;
     return;
   }
   const progress = readProgress();
-  const [hero, ...rest] = list;
-  const heroEps = episodesOf(hero);
-  const heroAt = progress[hero.id];
+  const genres = genreIndex(list);
+  if (catFilter !== "all" && !genres.some(([g]) => g === catFilter)) catFilter = "all";
+  renderChips(genres);
+
+  const byNew = [...list].sort((a, b) => tsOf(b.created_at || b.updated_at) - tsOf(a.created_at || a.updated_at));
+  const newIds = new Set(byNew.filter((it) => Date.now() - tsOf(it.created_at) < 14 * 864e5).map((it) => it.id));
+
+  // Search or category: filtered grid.
+  if (catQuery || catFilter !== "all") {
+    const q = norm(catQuery);
+    const pool = catFilter === "all" ? byNew : genres.find(([g]) => g === catFilter)[1];
+    const res = pool.filter((it) => !q || norm(it.title).includes(q) || genresOf(it).some((g) => norm(g).includes(q)));
+    body.innerHTML = res.length
+      ? `<div class="sfv-row-head"><h4>${catQuery ? `Resultados para «${esc(catQuery)}»` : esc(catFilter)}</h4><span class="sfv-count">${res.length}</span></div>
+         <div class="sfv-grid">${res.map((it) => card(it, progress, { isNew: newIds.has(it.id) })).join("")}</div>`
+      : `<div class="sfv-empty"><i class="fa-solid fa-magnifying-glass"></i><p>No hay series que coincidan.</p></div>`;
+    return;
+  }
+
+  const watching = list.filter((it) => progress[it.id] != null);
+  const top = [...list]
+    .sort(
+      (a, b) =>
+        (Number(b.vote_average) || 0) - (Number(a.vote_average) || 0) || episodesOf(b).length - episodesOf(a).length,
+    )
+    .slice(0, 10);
+  const genreRows = genres.filter(([, its]) => its.length >= 2).slice(0, 6);
+
   body.innerHTML = `
-    <article class="sfv-hero" data-id="${esc(hero.id)}" style="--bg:url('${esc(hero.poster_url)}')">
-      <img src="${esc(hero.poster_url)}" alt="" loading="lazy" />
-      <div class="sfv-hero-info">
-        <span class="sfv-chip">Nuevo</span>
-        <h3>${esc(hero.title)}</h3>
-        <p>${esc((hero.overview || "").slice(0, 140))}${(hero.overview || "").length > 140 ? "…" : ""}</p>
-        <div class="sfv-meta">${heroEps.length} episodios${hero.language ? ` · ${esc(hero.language)}` : ""}</div>
-        <button type="button" class="sfv-play-btn"><i class="fa-solid fa-play"></i> ${
-          heroAt != null ? `Continuar ep. ${heroEps[heroAt]?.number ?? 1}` : "Ver ahora"
-        }</button>
-      </div>
-    </article>
-    ${rest.length ? `<h4 class="sfv-row-title">Más series</h4>` : ""}
-    <div class="sfv-grid">
-      ${rest
-        .map((it) => {
-          const eps = episodesOf(it);
-          const at = progress[it.id];
-          const pct = at != null && eps.length ? Math.round(((at + 1) / eps.length) * 100) : 0;
-          return `
-          <button type="button" class="sfv-card" data-id="${esc(it.id)}">
-            <img src="${esc(it.poster_url)}" alt="" loading="lazy" />
-            <span class="sfv-badge">${eps.length} ep.</span>
-            ${pct ? `<span class="sfv-progress"><i style="width:${pct}%"></i></span>` : ""}
-            <span class="sfv-card-title">${esc(it.title)}</span>
-          </button>`;
-        })
-        .join("")}
-    </div>`;
-  body.querySelectorAll("[data-id]").forEach((el) =>
-    el.addEventListener("click", () => {
-      const it = list.find((x) => x.id === el.dataset.id);
-      if (it) openPlayer(it);
-    }),
-  );
+    ${heroCarousel(byNew.slice(0, 5), progress)}
+    ${row("Seguir viendo", watching, progress, {
+      icon: "fa-solid fa-clock-rotate-left",
+      cardOpts: (it) => ({ continueEp: episodesOf(it)[progress[it.id]]?.number }),
+    })}
+    ${list.length >= 3 ? row("Top 10", top, progress, { icon: "fa-solid fa-fire", cardOpts: (_, i) => ({ rank: i + 1 }) }) : ""}
+    ${
+      list.length >= 2
+        ? row("Nuevos estrenos", byNew.slice(0, 12), progress, {
+            icon: "fa-solid fa-bolt",
+            cardOpts: (it) => ({ isNew: newIds.has(it.id) }),
+          })
+        : ""
+    }
+    ${genreRows.map(([g, its]) => row(g, its.slice(0, 12), progress, { more: g })).join("")}
+    <section class="sfv-row">
+      <div class="sfv-row-head"><h4><i class="fa-solid fa-table-cells-large"></i> Todas las series</h4><span class="sfv-count">${list.length}</span></div>
+      <div class="sfv-grid">${byNew.map((it) => card(it, progress, { isNew: newIds.has(it.id) })).join("")}</div>
+    </section>`;
+  startHeroAutoplay();
 }
 
 async function openCatalog() {
@@ -299,6 +469,7 @@ async function openCatalog() {
 function closeCatalog(fromHistory = false) {
   if (!catalogEl?.classList.contains("open")) return;
   catalogEl.classList.remove("open");
+  clearInterval(heroTimer);
   lockScroll(false);
   saveState(null);
   if (!fromHistory) popLayer();
@@ -578,6 +749,11 @@ document.addEventListener("keydown", (e) => {
 
 // ── arranque: el botón solo aparece si hay contenido vertical ──────────────
 async function init() {
+  try {
+    localStorage.removeItem(STATE_KEY); // older versions kept it here
+  } catch {
+    /* storage unavailable */
+  }
   try {
     const list = await loadItems();
     if (list.length) mountFab();
