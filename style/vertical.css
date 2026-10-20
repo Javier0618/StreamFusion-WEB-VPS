@@ -480,6 +480,35 @@ html.sfv-lock body {
   border: 0;
   background: linear-gradient(135deg, var(--sfv-accent), var(--sfv-accent-2));
 }
+.sfv-side button[data-act="auto"] {
+  opacity: 0.55;
+}
+.sfv-side button[data-act="auto"].on {
+  opacity: 1;
+  color: #ffb27a;
+  border-color: rgba(255, 140, 60, 0.6);
+}
+.sfv-toast {
+  position: absolute;
+  top: calc(70px + env(safe-area-inset-top, 0px));
+  left: 50%;
+  z-index: 5;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, var(--sfv-accent), var(--sfv-accent-2));
+  box-shadow: 0 8px 22px rgba(255, 60, 60, 0.4);
+  opacity: 0;
+  transform: translate(-50%, -8px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  pointer-events: none;
+}
+.sfv-toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
 .sfv-side button:disabled {
   opacity: 0.3;
 }
