@@ -1085,3 +1085,43 @@ html.sfv-lock body {
   opacity: 1;
   transform: translate(-50%, 0);
 }
+
+/* aviso cuando el episodio no carga */
+.sfv-error {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+  color: #fff;
+  background: radial-gradient(120% 70% at 50% 0%, rgba(255, 107, 0, 0.2), transparent 60%), #07090f;
+}
+.sfv-error i {
+  font-size: 2.2rem;
+  color: var(--sfv-accent);
+}
+.sfv-error strong {
+  font-size: 1.05rem;
+}
+.sfv-error p {
+  margin: 0;
+  max-width: 280px;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: #9ca3af;
+}
+.sfv-error button {
+  margin-top: 6px;
+  padding: 10px 20px;
+  border: 0;
+  border-radius: 999px;
+  color: #fff;
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--sfv-accent), var(--sfv-accent-2));
+  cursor: pointer;
+}
