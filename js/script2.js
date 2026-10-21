@@ -6720,12 +6720,39 @@ async function generateHeroContentBySection(sectionType) {
   }
 }
 
+// ================================================================
+// ████  FRECUENCIA DE ANUNCIOS: 1 de cada SF_AD_EVERY episodios  ████
+// ================================================================
+// El anuncio lo sirve UnlimPlayer (su zona de HilltopAds). En los episodios que
+// no toca, se abre el embed con ?na=1 y su script (unlimplayer-boost.js v5)
+// quita el VAST. Contador compartido con Verticales (vertical.js).
+const SF_AD_EVERY = 3;
+const SF_AD_KEY = "sf_ad_counter_v1";
+const sfAdDecision = new Map(); // episode url → url with or without ?na=1 (re-plays do not count)
+
+function sfWithAdPolicy(url) {
+  try {
+    const u = new URL(url);
+    if (!/(^|\.)unlimplayer\.top$/i.test(u.hostname)) return url;
+    u.searchParams.delete("na");
+    const base = u.toString();
+    if (sfAdDecision.has(base)) return sfAdDecision.get(base);
+    const n = Number(localStorage.getItem(SF_AD_KEY)) || 0;
+    localStorage.setItem(SF_AD_KEY, String(n + 1));
+    if (n % SF_AD_EVERY !== 0) u.searchParams.set("na", "1");
+    sfAdDecision.set(base, u.toString());
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
 function playInIframe(url) {
   const videoContainer = document.getElementById("modal-video-container");
   const iframe = document.getElementById("video-player-iframe");
   if (!videoContainer || !iframe) return;
 
-  iframe.src = url;
+  iframe.src = sfWithAdPolicy(url);
 
   videoContainer.style.display = "block";
   sfWatchPlayer(iframe, videoContainer);
