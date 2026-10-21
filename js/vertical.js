@@ -653,6 +653,10 @@ function activate(i) {
 const FRAME_TIMEOUT = 15000;
 let frameTimer = null;
 let frameReady = false;
+// UnlimPlayer says "ready" even when the video then fails ("Server error!"):
+// only timeupdate progress proves it is really playing.
+let lastProgressAt = 0;
+const isPlaying = () => Date.now() - lastProgressAt < 5000;
 
 function showFrameError(frame, offline) {
   if (!frame || frame.querySelector(".sfv-error")) return;
@@ -692,11 +696,17 @@ function activeFrame() {
 
 window.addEventListener("offline", () => {
   const f = activeFrame();
-  if (f && !frameReady) showFrameError(f, true);
+  if (f && !isPlaying()) showFrameError(f, true);
 });
-window.addEventListener("online", () => {
-  activeFrame()?.querySelector(".sfv-error button")?.click();
-});
+window.addEventListener("online", () => setTimeout(onBackOnline, 1500)); // let DNS/route settle first
+function onBackOnline() {
+  const f = activeFrame();
+  if (!f?.querySelector("iframe")) return;
+  // Back online: reload the episode unless it was really playing (otherwise it
+  // stays on "Página web no disponible" / "Server error!").
+  if (!f.querySelector(".sfv-error") && !isPlaying()) showFrameError(f, true);
+  f.querySelector(".sfv-error button")?.click();
+}
 
 // ── puente con el reproductor ──
 function activeIframe() {
@@ -766,7 +776,10 @@ window.addEventListener("message", (ev) => {
     if (autoAdvanced || userStarted) post({ sf: "play" });
     autoAdvanced = false;
   } else if (d.event === "timeupdate" && Number.isFinite(t)) {
-    if (t > 0) userStarted = true;
+    if (t > 0) {
+      userStarted = true;
+      lastProgressAt = Date.now();
+    }
     if (Date.now() - lastStateSave > 5000) {
       lastStateSave = Date.now();
       saveState({ layer: "player", id: current.item.id, t: Math.floor(t) });
