@@ -4863,8 +4863,8 @@ async function fetchContentFromFirestore(filterOptions = {}) {
     const finalQuery = query(q, ...constraints);
     const snapshot = await getDocs(finalQuery);
     return snapshot.docs
-  .map((doc) => doc.data())
-  .filter((item) => item.is_vertical !== true);
+      .map((doc) => doc.data())
+      .filter((item) => item.is_vertical !== true);
   } catch (error) {
     console.error("Error fetching content from Firestore:", error);
     if (error.code === "failed-precondition") {
