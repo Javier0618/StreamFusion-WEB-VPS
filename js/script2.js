@@ -6742,6 +6742,10 @@ function playInIframe(url) {
 const SF_PLAYER_TIMEOUT = 15000;
 let sfPlayerTimer = null;
 let sfPlayerReady = false;
+// UnlimPlayer sends "ready" even when its video then fails ("Server error!"), so
+// only "timeupdate" with progress proves it is really playing.
+let sfLastProgressAt = 0;
+const sfIsPlaying = () => Date.now() - sfLastProgressAt < 5000;
 
 function sfInjectPlayerErrorStyles() {
   if (document.getElementById("sf-player-error-style")) return;
@@ -6807,6 +6811,7 @@ window.addEventListener("message", (ev) => {
   const d = ev.data;
   if (d && typeof d === "object" && d.sf === "player") {
     sfPlayerReady = true;
+    if (d.event === "timeupdate" && Number(d.currentTime) > 0) sfLastProgressAt = Date.now();
     clearTimeout(sfPlayerTimer);
     sfHidePlayerError(iframe.parentElement);
   }
@@ -6814,16 +6819,30 @@ window.addEventListener("message", (ev) => {
 
 window.addEventListener("offline", () => {
   const iframe = document.getElementById("video-player-iframe");
-  if (iframe?.isConnected && iframe.src && iframe.src !== "about:blank" && !sfPlayerReady) {
+  // Not actively playing → the player cannot recover by itself: show our notice.
+  if (iframe?.isConnected && iframe.src && iframe.src !== "about:blank" && !sfIsPlaying()) {
     sfShowPlayerError(iframe.parentElement, iframe, true);
   }
 });
 
-window.addEventListener("online", () => {
+window.addEventListener("online", () => setTimeout(sfOnBackOnline, 1500)); // let DNS/route settle first
+
+function sfOnBackOnline() {
   const iframe = document.getElementById("video-player-iframe");
-  const box = iframe?.parentElement?.querySelector(".sf-player-error");
-  if (iframe && box) box.querySelector("button")?.click(); // reintento automático
-});
+  if (!iframe?.isConnected || !iframe.src || iframe.src === "about:blank") return;
+  const box = iframe.parentElement?.querySelector(".sf-player-error");
+  // Back online: reload the player (it stays on "Página web no disponible" or
+  // "Server error!" otherwise). If it was really playing, leave it alone.
+  if (box) box.querySelector("button")?.click();
+  else if (!sfIsPlaying()) {
+    const src = iframe.src;
+    iframe.src = "about:blank";
+    setTimeout(() => {
+      iframe.src = src;
+      sfWatchPlayer(iframe, iframe.parentElement);
+    }, 50);
+  }
+}
 
 function renderFirestoreSeriesAccordion(seasons) {
   const optionsContainer = document.getElementById("media-options-container");
