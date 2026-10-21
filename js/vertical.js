@@ -635,6 +635,7 @@ function activate(i) {
         frame.innerHTML = `<div class="sfv-loader"></div><iframe src="${esc(ep.url)}" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="origin" loading="eager"></iframe>`;
         const iframe = frame.querySelector("iframe");
         iframe.addEventListener("load", () => frame.classList.add("ready"), { once: true });
+        watchFrame(frame);
       }
     } else if (Math.abs(j - i) > 0) {
       frame.innerHTML = "";
@@ -647,6 +648,55 @@ function activate(i) {
   playerEl.querySelectorAll(".sfv-sheet-grid button").forEach((b) => b.classList.toggle("active", Number(b.dataset.i) === i));
   saveProgress(current.item.id, i);
 }
+
+// ── aviso propio si el vídeo no carga (en vez de "Página web no disponible") ──
+const FRAME_TIMEOUT = 15000;
+let frameTimer = null;
+let frameReady = false;
+
+function showFrameError(frame, offline) {
+  if (!frame || frame.querySelector(".sfv-error")) return;
+  const box = document.createElement("div");
+  box.className = "sfv-error";
+  box.innerHTML = offline
+    ? `<i class="fa-solid fa-wifi"></i><strong>Sin conexión a internet</strong><p>El episodio seguirá cuando vuelva la red.</p><button type="button">Reintentar</button>`
+    : `<i class="fa-solid fa-circle-exclamation"></i><strong>No se pudo cargar el episodio</strong><p>Prueba de nuevo o pasa al siguiente.</p><button type="button">Reintentar</button>`;
+  box.querySelector("button").addEventListener("click", () => {
+    const iframe = frame.querySelector("iframe");
+    if (!iframe) return;
+    const src = iframe.src;
+    frame.classList.remove("ready");
+    iframe.src = "about:blank";
+    setTimeout(() => {
+      iframe.src = src;
+      iframe.addEventListener("load", () => frame.classList.add("ready"), { once: true });
+      watchFrame(frame);
+    }, 50);
+  });
+  frame.appendChild(box);
+}
+
+function watchFrame(frame) {
+  clearTimeout(frameTimer);
+  frameReady = false;
+  frame.querySelector(".sfv-error")?.remove();
+  if (!navigator.onLine) return showFrameError(frame, true);
+  frameTimer = setTimeout(() => {
+    if (!frameReady && frame.isConnected && frame.querySelector("iframe")) showFrameError(frame, !navigator.onLine);
+  }, FRAME_TIMEOUT);
+}
+
+function activeFrame() {
+  return playerEl?.querySelector(`.sfv-slide[data-i="${current?.index}"] .sfv-frame`) || null;
+}
+
+window.addEventListener("offline", () => {
+  const f = activeFrame();
+  if (f && !frameReady) showFrameError(f, true);
+});
+window.addEventListener("online", () => {
+  activeFrame()?.querySelector(".sfv-error button")?.click();
+});
 
 // ── puente con el reproductor ──
 function activeIframe() {
@@ -700,6 +750,10 @@ window.addEventListener("message", (ev) => {
   if (!iframe || ev.source !== iframe.contentWindow) return;
   const d = ev.data;
   if (!d || typeof d !== "object" || d.sf !== "player") return;
+  // The player answered: it loaded fine.
+  frameReady = true;
+  clearTimeout(frameTimer);
+  activeFrame()?.querySelector(".sfv-error")?.remove();
   const t = Number(d.currentTime);
 
   if (d.event === "ready") {
