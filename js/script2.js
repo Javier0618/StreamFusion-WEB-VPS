@@ -4862,6 +4862,9 @@ async function fetchContentFromFirestore(filterOptions = {}) {
 
     const finalQuery = query(q, ...constraints);
     const snapshot = await getDocs(finalQuery);
+    // Las series verticales (marcadas desde exploracurioso) viven solo en la
+    // sección Verticales (vertical.js): fuera de búsquedas, aleatorios,
+    // categorías y demás listas normales.
     return snapshot.docs
       .map((doc) => doc.data())
       .filter((item) => item.is_vertical !== true);
