@@ -6728,7 +6728,102 @@ function playInIframe(url) {
   iframe.src = url;
 
   videoContainer.style.display = "block";
+  sfWatchPlayer(iframe, videoContainer);
 }
+
+// ================================================================
+// ████  AVISO PROPIO CUANDO EL VÍDEO NO CARGA  ████
+// ================================================================
+// Sin conexión, Android muestra dentro del iframe su página "Página web no
+// disponible". La tapamos con un aviso de la app:
+//   · sin conexión → aviso al instante (y reintento solo al volver la red)
+//   · con conexión → si el reproductor de UnlimPlayer no avisa "ready" por el
+//     puente en SF_PLAYER_TIMEOUT ms, se considera que no cargó.
+const SF_PLAYER_TIMEOUT = 15000;
+let sfPlayerTimer = null;
+let sfPlayerReady = false;
+
+function sfInjectPlayerErrorStyles() {
+  if (document.getElementById("sf-player-error-style")) return;
+  const st = document.createElement("style");
+  st.id = "sf-player-error-style";
+  st.textContent = `
+    .sf-player-error{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:18px;text-align:center;color:#fff;background:radial-gradient(120% 90% at 50% 0%,rgba(255,107,0,.18),transparent 60%),#0b0d12}
+    .sf-player-error i{font-size:2rem;color:#ff6b00}
+    .sf-player-error strong{font-size:1rem}
+    .sf-player-error p{margin:0;max-width:320px;font-size:.82rem;line-height:1.4;color:#9ca3af}
+    .sf-player-error button{margin-top:4px;padding:9px 18px;border:0;border-radius:999px;color:#fff;font-weight:700;background:linear-gradient(135deg,#ff6b00,#ff2d7a);cursor:pointer}`;
+  document.head.appendChild(st);
+}
+
+function sfHidePlayerError(container) {
+  container?.querySelector(".sf-player-error")?.remove();
+}
+
+function sfShowPlayerError(container, iframe, offline) {
+  if (!container || !iframe) return;
+  sfInjectPlayerErrorStyles();
+  sfHidePlayerError(container);
+  if (getComputedStyle(container).position === "static") container.style.position = "relative";
+  const box = document.createElement("div");
+  box.className = "sf-player-error";
+  box.innerHTML = offline
+    ? `<i class="fas fa-wifi"></i><strong>Sin conexión a internet</strong><p>Revisa tu conexión. El vídeo se reanudará solo cuando vuelva la red.</p><button type="button">Reintentar</button>`
+    : `<i class="fas fa-circle-exclamation"></i><strong>No se pudo cargar el vídeo</strong><p>El servidor tardó demasiado o no está disponible. Prueba de nuevo o elige otro episodio.</p><button type="button">Reintentar</button>`;
+  box.querySelector("button").addEventListener("click", () => {
+    const src = iframe.src;
+    iframe.src = "about:blank";
+    setTimeout(() => {
+      iframe.src = src;
+      sfWatchPlayer(iframe, container);
+    }, 50);
+  });
+  container.appendChild(box);
+}
+
+function sfWatchPlayer(iframe, container) {
+  clearTimeout(sfPlayerTimer);
+  sfPlayerReady = false;
+  sfHidePlayerError(container);
+  if (!navigator.onLine) {
+    sfShowPlayerError(container, iframe, true);
+    return;
+  }
+  // Solo los reproductores con puente (UnlimPlayer) avisan "ready"; con otros no
+  // hay forma fiable de saber si cargaron, así que no se vigila el tiempo.
+  let host = "";
+  try {
+    host = new URL(iframe.src).hostname;
+  } catch {}
+  if (!/(^|\.)unlimplayer\.top$/i.test(host)) return;
+  sfPlayerTimer = setTimeout(() => {
+    if (!sfPlayerReady && iframe.isConnected) sfShowPlayerError(container, iframe, !navigator.onLine);
+  }, SF_PLAYER_TIMEOUT);
+}
+
+window.addEventListener("message", (ev) => {
+  const iframe = document.getElementById("video-player-iframe");
+  if (!iframe || ev.source !== iframe.contentWindow) return;
+  const d = ev.data;
+  if (d && typeof d === "object" && d.sf === "player") {
+    sfPlayerReady = true;
+    clearTimeout(sfPlayerTimer);
+    sfHidePlayerError(iframe.parentElement);
+  }
+});
+
+window.addEventListener("offline", () => {
+  const iframe = document.getElementById("video-player-iframe");
+  if (iframe?.isConnected && iframe.src && iframe.src !== "about:blank" && !sfPlayerReady) {
+    sfShowPlayerError(iframe.parentElement, iframe, true);
+  }
+});
+
+window.addEventListener("online", () => {
+  const iframe = document.getElementById("video-player-iframe");
+  const box = iframe?.parentElement?.querySelector(".sf-player-error");
+  if (iframe && box) box.querySelector("button")?.click(); // reintento automático
+});
 
 function renderFirestoreSeriesAccordion(seasons) {
   const optionsContainer = document.getElementById("media-options-container");
