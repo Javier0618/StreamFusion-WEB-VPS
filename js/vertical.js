@@ -13,7 +13,8 @@ import {
   limit,
   where,
 } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-firestore.js";
-import { firebaseConfig } from "./config.js";
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-auth.js";
+import { firebaseConfig, ADMIN_EMAIL } from "./config.js";
 
 const COLLECTION = "vertical_content";
 // TMDB titles that exploracurioso marked as "Verticales" stay in `content`
@@ -41,7 +42,15 @@ let lastStateSave = 0;
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-let items = null; // cache del catálogo
+// Admin (same rule as the main app: the account whose email is ADMIN_EMAIL).
+let isAdmin = false;
+onAuthStateChanged(getAuth(app), (user) => {
+  isAdmin = !!user && user.email === ADMIN_EMAIL;
+  catalogEl?.querySelector('[data-act="admin"]')?.toggleAttribute("hidden", !isAdmin);
+});
+
+let items = null; // cache del catálogo (lo que ven los usuarios)
+let allItems = []; // todo, incluidas ocultas y sin episodios (panel de admin)
 let loading = null;
 let catalogEl = null;
 let playerEl = null;
@@ -146,15 +155,16 @@ async function loadItems() {
       const x = d.data();
       return {
         ...x,
+        _col: TMDB_COLLECTION,
+        _docId: d.id,
         id: `tmdb_${d.id}`, // own key: progress and state do not collide with vertical_content ids
         title: x.title || x.name || "",
         poster_url: x.poster_url || (x.poster_path ? TMDB_IMG + x.poster_path : ""),
         created_at: x.created_at || x.imported_at,
       };
     });
-    items = [...own.docs.map((d) => ({ id: d.id, ...d.data() })), ...fromTmdb].filter(
-      (it) => it.is_vertical !== false && episodesOf(it).length > 0,
-    );
+    allItems = [...own.docs.map((d) => ({ ...d.data(), id: d.id, _col: COLLECTION, _docId: d.id })), ...fromTmdb];
+    items = allItems.filter((it) => it.is_vertical !== false && !it.hidden && episodesOf(it).length > 0);
     return items;
   })();
   try {
@@ -185,6 +195,7 @@ window.addEventListener("popstate", () => {
     selfPops--;
     return;
   }
+  if (adminBack?.(true)) return;
   if (playerEl?.querySelector(".sfv-sheet.open")) {
     closeSheet();
     pushLayer("player"); // the sheet has no entry of its own: keep the player's
@@ -197,6 +208,7 @@ window.addEventListener("popstate", () => {
  * Devuelve true si cerró algo de la sección vertical.
  */
 function handleBack() {
+  if (adminBack?.(false)) return true;
   if (playerEl?.querySelector(".sfv-sheet.open")) {
     closeSheet();
     return true;
@@ -268,6 +280,7 @@ function ensureCatalog() {
         <h2>Verticales</h2>
         <p>Dramas cortos · desliza para el siguiente</p>
       </div>
+      <button type="button" class="sfv-icon-btn" data-act="admin" aria-label="Gestionar verticales" hidden><i class="fa-solid fa-gear"></i></button>
     </div>
     <div class="sfv-search open">
       <i class="fa-solid fa-magnifying-glass"></i>
@@ -277,6 +290,9 @@ function ensureCatalog() {
     <div class="sfv-chips" role="tablist"></div>
     <div class="sfv-cat-body"></div>`;
   catalogEl.querySelector('[data-act="close"]').addEventListener("click", () => closeCatalog());
+  const adminBtn = catalogEl.querySelector('[data-act="admin"]');
+  adminBtn.toggleAttribute("hidden", !isAdmin);
+  adminBtn.addEventListener("click", openAdminPanel);
   const search = catalogEl.querySelector(".sfv-search");
   const input = search.querySelector("input");
   input.addEventListener("input", () => {
@@ -451,7 +467,7 @@ function renderCatalog(list) {
   const genreRows = genres.filter(([, its]) => its.length >= 2).slice(0, 6);
 
   body.innerHTML = `
-    ${heroCarousel(byNew.slice(0, 5), progress)}
+    ${heroCarousel([...byNew.filter((it) => it.featured), ...byNew.filter((it) => !it.featured)].slice(0, 5), progress)}
     ${row("Seguir viendo", watching, progress, {
       icon: "fa-solid fa-clock-rotate-left",
       cardOpts: (it) => ({ continueEp: episodesOf(it)[progress[it.id]]?.number }),
@@ -776,6 +792,42 @@ document.addEventListener("keydown", (e) => {
   else if (e.key === "ArrowUp") goTo(current.index - 1);
   else if (e.key === "Escape") closePlayer();
 });
+
+// ── panel de administración (vertical-admin.js, solo se descarga para el admin) ──
+let adminBack = null; // (fromHistory) => true si cerró una capa del panel
+
+async function openAdminPanel() {
+  if (!isAdmin) return;
+  try {
+    const mod = await import("./vertical-admin.js");
+    mod.openAdmin({
+      db,
+      esc,
+      episodesOf,
+      genresOf,
+      isolateGestures,
+      pushLayer,
+      popLayer,
+      setBackHandler: (fn) => (adminBack = fn),
+      getAll: async () => {
+        await loadItems();
+        return allItems;
+      },
+      // Tras guardar o borrar: recargar desde Firestore y repintar el catálogo.
+      reload: async () => {
+        items = null;
+        await loadItems();
+        if (catalogEl?.classList.contains("open")) renderCatalog(items);
+        if (items.length) mountFab();
+        return allItems;
+      },
+      play: (it) => openPlayer(it),
+    });
+  } catch (err) {
+    console.error("[vertical] no se pudo abrir el panel", err);
+    alert("No se pudo abrir el panel de verticales.");
+  }
+}
 
 // ── arranque: el botón solo aparece si hay contenido vertical ──────────────
 async function init() {
