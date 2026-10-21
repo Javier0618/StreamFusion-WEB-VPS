@@ -632,7 +632,7 @@ function activate(i) {
     const frame = s.querySelector(".sfv-frame");
     if (j === i) {
       if (!frame.querySelector("iframe")) {
-        frame.innerHTML = `<div class="sfv-loader"></div><iframe src="${esc(ep.url)}" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="origin" loading="eager"></iframe>`;
+        frame.innerHTML = `<div class="sfv-loader"></div><iframe src="${esc(withAdPolicy(ep.url))}" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="origin" loading="eager"></iframe>`;
         const iframe = frame.querySelector("iframe");
         iframe.addEventListener("load", () => frame.classList.add("ready"), { once: true });
         watchFrame(frame);
@@ -647,6 +647,28 @@ function activate(i) {
   playerEl.querySelector('[data-act="next"]').disabled = i === current.episodes.length - 1;
   playerEl.querySelectorAll(".sfv-sheet-grid button").forEach((b) => b.classList.toggle("active", Number(b.dataset.i) === i));
   saveProgress(current.item.id, i);
+}
+
+// ── frecuencia de anuncios (1 de cada 3 episodios, contador compartido con script2.js) ──
+const AD_EVERY = 3;
+const AD_KEY = "sf_ad_counter_v1";
+const adDecision = new Map(); // episode url → url with or without ?na=1 (re-plays do not count)
+
+function withAdPolicy(url) {
+  try {
+    const u = new URL(url);
+    if (!/(^|\.)unlimplayer\.top$/i.test(u.hostname)) return url;
+    u.searchParams.delete("na");
+    const base = u.toString();
+    if (adDecision.has(base)) return adDecision.get(base);
+    const n = Number(localStorage.getItem(AD_KEY)) || 0;
+    localStorage.setItem(AD_KEY, String(n + 1));
+    if (n % AD_EVERY !== 0) u.searchParams.set("na", "1");
+    adDecision.set(base, u.toString());
+    return u.toString();
+  } catch {
+    return url;
+  }
 }
 
 // ── aviso propio si el vídeo no carga (en vez de "Página web no disponible") ──
