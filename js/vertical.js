@@ -11,10 +11,15 @@ import {
   query,
   orderBy,
   limit,
+  where,
 } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-firestore.js";
 import { firebaseConfig } from "./config.js";
 
 const COLLECTION = "vertical_content";
+// TMDB titles that exploracurioso marked as "Verticales" stay in `content`
+// (with is_vertical: true and only "vertical" in their sections).
+const TMDB_COLLECTION = "content";
+const TMDB_IMG = "https://image.tmdb.org/t/p/w500";
 const MAX_ITEMS = 80;
 const PROGRESS_KEY = "sf_vertical_progress"; // { [id]: episodeIndex }
 // Open layer, so that if Android reloads the app in the background we come back to the same place.
@@ -129,10 +134,27 @@ async function loadItems() {
   if (items) return items;
   if (loading) return loading;
   loading = (async () => {
-    const snap = await getDocs(query(collection(db, COLLECTION), orderBy("updated_at", "desc"), limit(MAX_ITEMS)));
-    items = snap.docs
-      .map((d) => ({ id: d.id, ...d.data() }))
-      .filter((it) => it.is_vertical !== false && episodesOf(it).length > 0);
+    const [own, tmdb] = await Promise.all([
+      getDocs(query(collection(db, COLLECTION), orderBy("updated_at", "desc"), limit(MAX_ITEMS))),
+      // If this query fails (rules, network) the catalog still shows the series without TMDB.
+      getDocs(query(collection(db, TMDB_COLLECTION), where("is_vertical", "==", true), limit(MAX_ITEMS))).catch((err) => {
+        console.warn("[vertical] series TMDB no disponibles", err);
+        return null;
+      }),
+    ]);
+    const fromTmdb = (tmdb?.docs ?? []).map((d) => {
+      const x = d.data();
+      return {
+        ...x,
+        id: `tmdb_${d.id}`, // own key: progress and state do not collide with vertical_content ids
+        title: x.title || x.name || "",
+        poster_url: x.poster_url || (x.poster_path ? TMDB_IMG + x.poster_path : ""),
+        created_at: x.created_at || x.imported_at,
+      };
+    });
+    items = [...own.docs.map((d) => ({ id: d.id, ...d.data() })), ...fromTmdb].filter(
+      (it) => it.is_vertical !== false && episodesOf(it).length > 0,
+    );
     return items;
   })();
   try {
