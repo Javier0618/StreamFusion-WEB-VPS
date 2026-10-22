@@ -7,9 +7,17 @@
   --sfv-line: rgba(255, 255, 255, 0.1);
 }
 
-html.sfv-lock,
-html.sfv-lock body {
+html.sfv-noscroll,
+html.sfv-noscroll body {
   overflow: hidden !important;
+}
+#sfv-catalog,
+#sfv-player,
+#sfv-admin,
+#sfv-editor,
+#sfv-unlock,
+.sfv-cat-body {
+  overscroll-behavior: contain;
 }
 
 /* ── botón flotante ── */
