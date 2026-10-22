@@ -12,6 +12,9 @@ import {
   orderBy,
   limit,
   where,
+  doc,
+  getDoc,
+  updateDoc,
 } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-firestore.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-auth.js";
 import { firebaseConfig, ADMIN_EMAIL } from "./config.js";
@@ -47,6 +50,7 @@ let isAdmin = false;
 onAuthStateChanged(getAuth(app), (user) => {
   isAdmin = !!user && user.email === ADMIN_EMAIL;
   catalogEl?.querySelector('[data-act="admin"]')?.toggleAttribute("hidden", !isAdmin);
+  loadAccountUnlocks(user);
 });
 
 let items = null; // cache del catálogo (lo que ven los usuarios)
@@ -196,6 +200,10 @@ window.addEventListener("popstate", () => {
     return;
   }
   if (adminBack?.(true)) return;
+  if (closeUnlockModal()) {
+    pushLayer("player"); // the modal has no history entry of its own
+    return;
+  }
   if (playerEl?.querySelector(".sfv-sheet.open")) {
     closeSheet();
     pushLayer("player"); // the sheet has no entry of its own: keep the player's
@@ -208,6 +216,7 @@ window.addEventListener("popstate", () => {
  * Devuelve true si cerró algo de la sección vertical.
  */
 function handleBack() {
+  if (closeUnlockModal()) return true;
   if (adminBack?.(false)) return true;
   if (playerEl?.querySelector(".sfv-sheet.open")) {
     closeSheet();
@@ -571,7 +580,7 @@ let ignoreObserverUntil = 0;
 function openPlayer(item) {
   ensurePlayer();
   const episodes = episodesOf(item);
-  const start = Math.min(readProgress()[item.id] ?? 0, episodes.length - 1);
+  const start = Math.min(readProgress()[item.id] ?? 0, episodes.length - 1, unlockedCount(item, episodes.length));
   current = { item, episodes, index: -1 };
 
   playerEl.querySelector(".sfv-top-title strong").textContent = item.title || "";
@@ -592,7 +601,7 @@ function openPlayer(item) {
     .join("");
 
   playerEl.querySelector(".sfv-sheet-grid").innerHTML = episodes
-    .map((ep, i) => `<button type="button" data-i="${i}">${ep.number}</button>`)
+    .map((ep, i) => `<button type="button" data-i="${i}" class="${i >= unlockedCount(item, episodes.length) ? "locked" : ""}">${ep.number}</button>`)
     .join("");
   playerEl.querySelectorAll(".sfv-sheet-grid button").forEach((b) =>
     b.addEventListener("click", () => {
@@ -630,7 +639,13 @@ function activate(i) {
   const slides = playerEl.querySelectorAll(".sfv-slide");
   slides.forEach((s, j) => {
     const frame = s.querySelector(".sfv-frame");
-    if (j === i) {
+    if (j === i && isLocked(i)) {
+      if (!frame.querySelector(".sfv-lock")) {
+        frame.innerHTML = lockCardHtml(i);
+        frame.classList.add("ready");
+        frame.querySelector('[data-act="unlock"]').addEventListener("click", openUnlockModal);
+      }
+    } else if (j === i) {
       if (!frame.querySelector("iframe")) {
         frame.innerHTML = `<div class="sfv-loader"></div><iframe src="${esc(withAdPolicy(ep.url))}" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="origin" loading="eager"></iframe>`;
         const iframe = frame.querySelector("iframe");
@@ -649,26 +664,184 @@ function activate(i) {
   saveProgress(current.item.id, i);
 }
 
-// ── frecuencia de anuncios (1 de cada 3 episodios, contador compartido con script2.js) ──
-const AD_EVERY = 3;
-const AD_KEY = "sf_ad_counter_v1";
-const adDecision = new Map(); // episode url → url with or without ?na=1 (re-plays do not count)
-
+// ── anuncios: en Verticales nunca dentro del reproductor ──
+// Aquí el anuncio se ve al desbloquear episodios (página de apoyo de UnlimPlayer),
+// así que el embed se abre siempre con ?na=1 (sin VAST).
 function withAdPolicy(url) {
   try {
     const u = new URL(url);
     if (!/(^|\.)unlimplayer\.top$/i.test(u.hostname)) return url;
-    u.searchParams.delete("na");
-    const base = u.toString();
-    if (adDecision.has(base)) return adDecision.get(base);
-    const n = Number(localStorage.getItem(AD_KEY)) || 0;
-    localStorage.setItem(AD_KEY, String(n + 1));
-    if (n % AD_EVERY !== 0) u.searchParams.set("na", "1");
-    adDecision.set(base, u.toString());
+    u.searchParams.set("na", "1");
     return u.toString();
   } catch {
     return url;
   }
+}
+
+// ── desbloqueo: 7 episodios gratis y 10 más por cada anuncio visto ──
+// Se guarda en el teléfono (localStorage) y, con sesión iniciada, también en
+// la cuenta: users/{uid}.vertical_unlocks = { [serie]: episodios desbloqueados }.
+const FREE_EPISODES = 7;
+const UNLOCK_STEP = 10;
+const ALL_FREE_UP_TO = 10; // series de 10 episodios o menos: enteras gratis
+const UNLOCK_KEY = "sf_vertical_unlocks";
+const SUPPORT_URL = "https://unlimplayer.top/sf-apoyo.html";
+const SUPPORT_ORIGIN = "https://unlimplayer.top";
+let uid = null;
+let accountUnlocks = {};
+let unlockEl = null;
+
+function localUnlocks() {
+  try {
+    return JSON.parse(localStorage.getItem(UNLOCK_KEY) || "{}") || {};
+  } catch {
+    return {};
+  }
+}
+function saveLocalUnlocks(map) {
+  try {
+    localStorage.setItem(UNLOCK_KEY, JSON.stringify(map));
+  } catch {
+    /* almacenamiento no disponible */
+  }
+}
+
+/** On login: read the account's unlocks and add the ones earned on this phone before. */
+async function loadAccountUnlocks(user) {
+  uid = user?.uid ?? null;
+  accountUnlocks = {};
+  if (!uid) return refreshLocks();
+  try {
+    const snap = await getDoc(doc(db, "users", uid));
+    accountUnlocks = { ...(snap.exists() ? snap.data().vertical_unlocks : null) };
+    const updates = {};
+    for (const [id, n] of Object.entries(localUnlocks())) {
+      if (Number(n) > (Number(accountUnlocks[id]) || 0)) {
+        accountUnlocks[id] = Number(n);
+        updates[`vertical_unlocks.${id}`] = Number(n);
+      }
+    }
+    if (Object.keys(updates).length) await updateDoc(doc(db, "users", uid), updates);
+  } catch (err) {
+    console.warn("[vertical] desbloqueos de la cuenta no disponibles", err);
+  }
+  refreshLocks();
+}
+
+/** How many episodes (from the first one) the viewer can watch in this series. */
+function unlockedCount(item, total) {
+  if (item.free_all || total <= ALL_FREE_UP_TO) return total;
+  const n = Math.max(FREE_EPISODES, Number(localUnlocks()[item.id]) || 0, Number(accountUnlocks[item.id]) || 0);
+  return Math.min(total, n);
+}
+function isLocked(i) {
+  return !!current && i >= unlockedCount(current.item, current.episodes.length);
+}
+
+async function grantUnlock(item, total) {
+  const next = Math.min(total, unlockedCount(item, total) + UNLOCK_STEP);
+  const loc = localUnlocks();
+  loc[item.id] = Math.max(next, Number(loc[item.id]) || 0);
+  saveLocalUnlocks(loc);
+  if (uid) {
+    accountUnlocks[item.id] = next;
+    try {
+      await updateDoc(doc(db, "users", uid), { [`vertical_unlocks.${item.id}`]: next });
+    } catch (err) {
+      console.warn("[vertical] no se pudo guardar el desbloqueo en la cuenta", err);
+    }
+  }
+  return next;
+}
+
+function lockCardHtml(i) {
+  const total = current.episodes.length;
+  const from = current.episodes[i]?.number ?? i + 1;
+  const toIdx = Math.min(total, unlockedCount(current.item, total) + UNLOCK_STEP) - 1;
+  const to = current.episodes[toIdx]?.number ?? toIdx + 1;
+  return `
+    <div class="sfv-lock">
+      <div class="sfv-lock-ico"><i class="fa-solid fa-lock"></i></div>
+      <strong>Episodio ${from} bloqueado</strong>
+      <p>Mira un anuncio corto y desbloquea los episodios <b>${from}–${to}</b>.</p>
+      <button type="button" class="sfv-play-btn" data-act="unlock"><i class="fa-solid fa-play"></i> Ver anuncio y desbloquear</button>
+      <small>Así apoyas a StreamFusion ❤</small>
+    </div>`;
+}
+
+/** Lock icons in the episode list and, if needed, the current slide. */
+function refreshLocks() {
+  if (!current || !playerEl) return;
+  playerEl.querySelectorAll(".sfv-sheet-grid button").forEach((b) => b.classList.toggle("locked", isLocked(Number(b.dataset.i))));
+  const i = current.index;
+  const frame = activeFrame();
+  if (!frame) return;
+  const locked = isLocked(i);
+  const showsLock = !!frame.querySelector(".sfv-lock");
+  if (locked !== showsLock) {
+    current.index = -1; // force activate() to rebuild the slide
+    activate(i);
+  }
+}
+
+function openUnlockModal() {
+  if (!current) return;
+  const item = current.item;
+  const total = current.episodes.length;
+  if (!unlockEl) {
+    unlockEl = document.createElement("div");
+    unlockEl.id = "sfv-unlock";
+    isolateGestures(unlockEl);
+    document.body.appendChild(unlockEl);
+  }
+  unlockEl.innerHTML = `
+    <div class="sfv-unlock-box">
+      <div class="sfv-unlock-head"><span>Desbloqueando episodios…</span><button type="button" class="sfv-icon-btn" data-act="cancel" aria-label="Cancelar"><i class="fa-solid fa-xmark"></i></button></div>
+      <iframe src="${SUPPORT_URL}" allow="autoplay; encrypted-media" referrerpolicy="origin"></iframe>
+    </div>`;
+  unlockEl.classList.add("open");
+  const iframe = unlockEl.querySelector("iframe");
+  let readySeen = false;
+  const loadTimer = setTimeout(() => {
+    if (!readySeen) finish("error");
+  }, 20000);
+
+  async function finish(result) {
+    clearTimeout(loadTimer);
+    window.removeEventListener("message", onMsg);
+    closeUnlockModal();
+    if (result === "error") {
+      toast("No se pudo cargar el anuncio. Revisa tu conexión.");
+      return;
+    }
+    const before = unlockedCount(item, total);
+    const next = await grantUnlock(item, total);
+    const a = current?.episodes[before]?.number ?? before + 1;
+    const b = current?.episodes[next - 1]?.number ?? next;
+    toast(result === "nofill" ? `Hoy va por nuestra cuenta 🎁 Episodios ${a}–${b}` : `🔓 Episodios ${a}–${b} desbloqueados. ¡Gracias!`);
+    refreshLocks();
+  }
+  function onMsg(ev) {
+    if (ev.origin !== SUPPORT_ORIGIN || ev.source !== iframe.contentWindow) return;
+    const d = ev.data;
+    if (!d || d.sf !== "support") return;
+    if (d.event === "ready") readySeen = true;
+    else if (d.event === "done") finish("done");
+    else if (d.event === "nofill") finish("nofill");
+  }
+  window.addEventListener("message", onMsg);
+  unlockEl.querySelector('[data-act="cancel"]').addEventListener("click", () => {
+    clearTimeout(loadTimer);
+    window.removeEventListener("message", onMsg);
+    closeUnlockModal();
+  });
+}
+
+function closeUnlockModal() {
+  if (!unlockEl?.classList.contains("open")) return false;
+  unlockEl.classList.remove("open");
+  unlockEl.innerHTML = ""; // detiene el anuncio
+  return true;
 }
 
 // ── aviso propio si el vídeo no carga (en vez de "Página web no disponible") ──
