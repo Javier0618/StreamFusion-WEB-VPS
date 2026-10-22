@@ -144,6 +144,7 @@ function renderList(loading = false) {
             ${it.language ? `<span>${api.esc(it.language)}</span>` : ""}
             ${it.featured ? `<span class="b-feat"><i class="fa-solid fa-star"></i> Destacada</span>` : ""}
             ${it.hidden ? `<span class="b-hidden"><i class="fa-solid fa-eye-slash"></i> Oculta</span>` : ""}
+            ${it.free_all ? `<span class="b-feat"><i class="fa-solid fa-unlock"></i> Gratis</span>` : ""}
             ${eps === 0 ? `<span class="b-hidden">Sin enlaces</span>` : ""}
           </div>
           <div class="sfv-adm-actions">
@@ -265,6 +266,7 @@ function renderEditor() {
         <div class="sfv-ed-toggles">
           <label class="sfv-switch"><input type="checkbox" name="featured" ${it.featured ? "checked" : ""} /><span></span> Destacada</label>
           <label class="sfv-switch"><input type="checkbox" name="hidden" ${it.hidden ? "checked" : ""} /><span></span> Oculta</label>
+          <label class="sfv-switch" title="Sin bloqueo: todos los episodios libres, sin anuncios para desbloquear"><input type="checkbox" name="free_all" ${it.free_all ? "checked" : ""} /><span></span> Gratis</label>
         </div>
       </div>
     </div>
@@ -340,6 +342,7 @@ function syncFields() {
   if (f.genres) d.genres = [f.genres.value];
   d.featured = f.featured.checked;
   d.hidden = f.hidden.checked;
+  d.free_all = f.free_all.checked;
 }
 
 function onEditorClick(e) {
@@ -380,6 +383,7 @@ async function save() {
   const data = {
     featured: form.elements.featured.checked,
     hidden: form.elements.hidden.checked,
+    free_all: form.elements.free_all.checked,
     updated_at: serverTimestamp(),
   };
   if (!isTmdb(it)) {
