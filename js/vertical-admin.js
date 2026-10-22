@@ -6,8 +6,21 @@ import {
   doc,
   updateDoc,
   deleteDoc,
+  setDoc,
   serverTimestamp,
 } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-firestore.js";
+
+/**
+ * Phones keep a copy of the catalog and only read web_config/vertical_catalog on
+ * open: changing the version makes them reload it right away.
+ */
+async function bumpCatalogVersion() {
+  try {
+    await setDoc(doc(api.db, "web_config", "vertical_catalog"), { version: Date.now() }, { merge: true });
+  } catch (err) {
+    console.warn("[vertical-admin] no se pudo actualizar la versión del catálogo", err);
+  }
+}
 
 const LANGS = ["Latino", "Castellano", "Subtitulado", "Inglés", "Otro"];
 
@@ -178,6 +191,7 @@ async function onListClick(e) {
     if (!confirm(msg)) return;
     try {
       await deleteDoc(doc(api.db, it._col, it._docId));
+      await bumpCatalogVersion();
       toast("Serie eliminada");
       all = await api.reload();
       renderList();
@@ -190,6 +204,7 @@ async function onListClick(e) {
 async function quickUpdate(it, data, okText) {
   try {
     await updateDoc(doc(api.db, it._col, it._docId), { ...data, updated_at: serverTimestamp() });
+    await bumpCatalogVersion();
     toast(okText);
     all = await api.reload();
     renderList();
@@ -422,6 +437,7 @@ async function save() {
   btn.disabled = true;
   try {
     await updateDoc(doc(api.db, it._col, it._docId), data);
+    await bumpCatalogVersion();
     toast("Cambios guardados");
     closeEditor();
     all = await api.reload();
