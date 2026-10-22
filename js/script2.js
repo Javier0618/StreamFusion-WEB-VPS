@@ -30,6 +30,7 @@ import {
   onSnapshot,
   writeBatch,
   deleteDoc,
+  Timestamp,
 } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-firestore.js"; // Añadido deleteDoc
 
 // Initialize Firebase
@@ -4805,23 +4806,9 @@ async function loadAllContent() {
     // Show a loading indicator since this is a critical initial load
     showSpinner();
 
-    // Fetch all content from Firestore and cache it
-    allContent = await fetchContentFromFirestore();
-
-    // Populate movies and series content from the cached allContent
-    moviesContent = allContent.filter((item) => item.media_type === "movie");
-    seriesContent = allContent.filter((item) => item.media_type === "tv");
-
-    // Render the initial page content using the cached data
-    const heroContent = await generateHeroContent();
-    renderHeroSlides(heroContent);
-    preloadCriticalImages(heroContent);
-
-    // Asynchronously load other non-critical content sections
-    loadDeferredContent();
-    renderCategories();
-    renderPlatforms();
-    startHeroSlideshow();
+    // Phone copy + only what changed since it (see sfLoadContentCached)
+    const { items } = await sfLoadContentCached();
+    await sfApplyContent(items);
   } catch (error) {
     console.error("Error loading initial content:", error);
     // Optionally, display an error message to the user
@@ -4830,6 +4817,193 @@ async function loadAllContent() {
     hideSpinner();
   }
 }
+
+/** Put a catalog in the app and redraw the sections (also used when new titles arrive). */
+async function sfApplyContent(items) {
+  allContent = items;
+
+  // Populate movies and series content from the cached allContent
+  moviesContent = allContent.filter((item) => item.media_type === "movie");
+  seriesContent = allContent.filter((item) => item.media_type === "tv");
+
+  // Section grids cache their data: redraw them with the new catalog.
+  for (const k of Object.keys(sectionContentCache)) sectionContentCache[k] = false;
+
+  // Render the initial page content using the cached data
+  const heroContent = await generateHeroContent();
+  renderHeroSlides(heroContent);
+  preloadCriticalImages(heroContent);
+
+  // Asynchronously load other non-critical content sections
+  loadDeferredContent();
+  renderCategories();
+  renderPlatforms();
+  startHeroSlideshow();
+}
+
+// ================================================================
+// ████  CACHÉ DEL CATÁLOGO EN EL TELÉFONO + SOLO LO NUEVO  ████
+// ================================================================
+// Antes, cada apertura descargaba toda la colección `content` (una lectura de
+// Firestore por título, ~2 250) y el plan gratis (50 000/día) se agotaba.
+// Ahora:
+//   · el catálogo se guarda en el teléfono (IndexedDB);
+//   · al abrir solo se piden los títulos con `updated_at` posterior a la copia
+//     (exploracurioso y el admin lo marcan en cada escritura);
+//   · los borrados llegan por web_config/content_catalog.deleted;
+//   · si `version` de ese documento cambia, se recarga todo una vez;
+//   · sin red o con la cuota agotada, se muestra la copia del teléfono.
+const SF_CC_DB = "sf_cache";
+const SF_CC_STORE = "kv";
+const SF_CC_KEY = "content_v1";
+const SF_CC_MARGIN_MS = 5 * 60 * 1000; // margen por relojes desfasados (repetir es inofensivo)
+const SF_CC_RESYNC_MS = 3 * 60 * 1000; // al volver a la app, comprobar novedades como mucho cada 3 min
+let sfContentSyncedAt = 0;
+
+function sfIdb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(SF_CC_DB, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(SF_CC_STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function sfIdbGet(key) {
+  try {
+    const db = await sfIdb();
+    return await new Promise((resolve, reject) => {
+      const r = db.transaction(SF_CC_STORE, "readonly").objectStore(SF_CC_STORE).get(key);
+      r.onsuccess = () => resolve(r.result || null);
+      r.onerror = () => reject(r.error);
+    });
+  } catch {
+    return null;
+  }
+}
+async function sfIdbSet(key, value) {
+  try {
+    const db = await sfIdb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(SF_CC_STORE, "readwrite");
+      tx.objectStore(SF_CC_STORE).put(value, key);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch {
+    /* sin almacenamiento: la app sigue funcionando sin copia */
+  }
+}
+
+function sfTsMillis(v) {
+  if (!v) return 0;
+  if (typeof v.toMillis === "function") return v.toMillis();
+  if (typeof v.seconds === "number") return v.seconds * 1000;
+  return Number(v) || Date.parse(v) || 0;
+}
+
+/** Firestore Timestamps → { seconds, nanoseconds } (lo único que usa la app), para IndexedDB. */
+function sfPlainContent(item) {
+  const out = { ...item };
+  for (const k of Object.keys(out)) {
+    const v = out[k];
+    if (v && typeof v.toMillis === "function") out[k] = { seconds: v.seconds, nanoseconds: v.nanoseconds };
+  }
+  return out;
+}
+
+function sfSortContent(items) {
+  return items.sort((a, b) => (b.imported_at?.seconds || 0) - (a.imported_at?.seconds || 0));
+}
+
+/**
+ * Returns { items, changed }: items = full catalog (without verticals);
+ * changed = something differs from what the app already had.
+ */
+async function sfLoadContentCached() {
+  const cached = await sfIdbGet(SF_CC_KEY);
+  let meta = null;
+  try {
+    const snap = await getDoc(doc(db, "web_config", "content_catalog"));
+    meta = snap.exists() ? snap.data() : {};
+  } catch (err) {
+    console.warn("[catálogo] web_config/content_catalog no disponible", err);
+  }
+  sfContentSyncedAt = Date.now();
+
+  // Sin red / cuota agotada: la copia del teléfono.
+  if (cached && meta === null) return { items: cached.items, changed: false };
+
+  const version = Number(meta?.version) || 0;
+  if (cached && cached.version === version) {
+    try {
+      const since = Timestamp.fromMillis(Math.max(0, cached.maxUpdated - SF_CC_MARGIN_MS));
+      const snap = await getDocs(
+        query(collection(db, "content"), where("updated_at", ">", since), orderBy("updated_at")),
+      );
+      const byId = new Map(cached.items.map((it) => [String(it.id), it]));
+      let changed = false;
+      let maxUpdated = cached.maxUpdated;
+      for (const d of snap.docs) {
+        const it = d.data();
+        const id = String(it.id ?? d.id);
+        maxUpdated = Math.max(maxUpdated, sfTsMillis(it.updated_at));
+        const prev = byId.get(id);
+        if (it.is_vertical === true) {
+          if (prev) {
+            byId.delete(id);
+            changed = true;
+          }
+          continue;
+        }
+        const plain = sfPlainContent(it);
+        if (!prev || JSON.stringify(prev) !== JSON.stringify(plain)) changed = true;
+        byId.set(id, plain);
+      }
+      for (const id of Object.keys(meta?.deleted || {})) {
+        if (byId.delete(String(id))) changed = true;
+      }
+      const items = changed ? sfSortContent([...byId.values()]) : cached.items;
+      if (changed || maxUpdated !== cached.maxUpdated) {
+        await sfIdbSet(SF_CC_KEY, { items, version, maxUpdated, at: Date.now() });
+      }
+      return { items, changed };
+    } catch (err) {
+      console.warn("[catálogo] no se pudieron pedir las novedades; se usa la copia", err);
+      return { items: cached.items, changed: false };
+    }
+  }
+
+  // Primera vez o versión nueva: catálogo completo (una sola vez).
+  const items = (await fetchContentFromFirestore()).map(sfPlainContent);
+  if (!items.length && cached) return { items: cached.items, changed: false }; // error de lectura
+  const maxUpdated = items.reduce((m, it) => Math.max(m, sfTsMillis(it.updated_at)), Date.now() - SF_CC_MARGIN_MS);
+  await sfIdbSet(SF_CC_KEY, { items, version, maxUpdated, at: Date.now() });
+  return { items, changed: true };
+}
+
+/** Admin: marca un borrado para que los teléfonos lo quiten de su copia. */
+async function sfRecordContentDeletion(contentId) {
+  try {
+    await setDoc(
+      doc(db, "web_config", "content_catalog"),
+      { deleted: { [String(contentId)]: Date.now() } },
+      { merge: true },
+    );
+  } catch (err) {
+    console.warn("[catálogo] no se pudo anotar el borrado", err);
+  }
+}
+
+/** Al volver a la app: si hay títulos nuevos, se añaden sin cerrarla. */
+document.addEventListener("visibilitychange", async () => {
+  if (document.hidden || Date.now() - sfContentSyncedAt < SF_CC_RESYNC_MS) return;
+  try {
+    const r = await sfLoadContentCached();
+    if (r.changed) await sfApplyContent(r.items);
+  } catch (err) {
+    console.warn("[catálogo] no se pudo actualizar al volver", err);
+  }
+});
 
 async function fetchContentFromFirestore(filterOptions = {}) {
   const {
@@ -8114,7 +8288,7 @@ async function handleUpdateContentUrls() {
 
   try {
     const contentRef = doc(db, "content", String(itemToEdit.id));
-    await updateDoc(contentRef, updateData);
+    await updateDoc(contentRef, { ...updateData, updated_at: serverTimestamp() }); // phones pick it up
 
     // Update the item in the global allContent array to reflect changes immediately
     const index = allContent.findIndex((item) => item.id === itemToEdit.id);
@@ -8324,7 +8498,7 @@ async function confirmImportWithSections(event) {
           .getElementById("next-episode-note")
           .value.trim();
       }
-      await updateDoc(contentRef, updateData);
+      await updateDoc(contentRef, { ...updateData, updated_at: serverTimestamp() }); // phones pick it up
 
       // Update the item in the global allContent array
       const index = allContent.findIndex((content) => content.id === item.id);
@@ -8413,7 +8587,7 @@ async function confirmImportWithSections(event) {
       }
 
       const contentRef = doc(db, "content", String(item.id));
-      await setDoc(contentRef, contentDataForFirestore);
+      await setDoc(contentRef, { ...contentDataForFirestore, updated_at: serverTimestamp() });
 
       const contentDataForClient = {
         ...contentDataForFirestore,
@@ -8801,6 +8975,7 @@ async function handleDeleteContent() {
   try {
     // 1. Delete from Firestore
     await deleteDoc(doc(db, "content", String(contentId)));
+    await sfRecordContentDeletion(contentId);
 
     const index = allContent.findIndex((item) => String(item.id) === contentId);
     if (index > -1) {
@@ -12739,6 +12914,7 @@ async function sfSetHomeSection(item, key, on) {
   else delete added[key];
   try {
     await updateDoc(doc(db, "content", String(item.id)), {
+      updated_at: serverTimestamp(),
       "display_options.home_sections": next,
       "display_options.home_added": added,
     });
@@ -13288,7 +13464,7 @@ async function sfBulkStart() {
       // Guardar lo obtenido de esta serie (aunque se haya interrumpido)
       if (changed > 0) {
         try {
-          await updateDoc(doc(db, "content", String(series.id)), { seasons });
+          await updateDoc(doc(db, "content", String(series.id)), { seasons, updated_at: serverTimestamp() });
           series.seasons = seasons;
           sfBulk.stats.saved++;
           sfBulk.stats.intro += introN;
