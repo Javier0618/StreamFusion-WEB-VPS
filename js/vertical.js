@@ -201,8 +201,8 @@ window.addEventListener("popstate", () => {
   }
   // No optional calls (fn?.()) in this file: the obfuscator turns them into plain calls.
   if (typeof adminBack === "function" && adminBack(true)) return;
-  if (closeUnlockModal()) {
-    pushLayer("player"); // the modal has no history entry of its own
+  if (unlockEl?.classList.contains("open")) {
+    pushLayer("player"); // browser Back while the ad plays: stay on it
     return;
   }
   if (playerEl?.querySelector(".sfv-sheet.open")) {
@@ -217,7 +217,7 @@ window.addEventListener("popstate", () => {
  * Devuelve true si cerró algo de la sección vertical.
  */
 function handleBack() {
-  if (closeUnlockModal()) return true;
+  if (unlockEl?.classList.contains("open")) return true; // the ad cannot be closed with Back
   if (typeof adminBack === "function" && adminBack(false)) return true;
   if (playerEl?.querySelector(".sfv-sheet.open")) {
     closeSheet();
@@ -603,7 +603,10 @@ function openPlayer(item) {
     .join("");
 
   playerEl.querySelector(".sfv-sheet-grid").innerHTML = episodes
-    .map((ep, i) => `<button type="button" data-i="${i}" class="${i >= unlockedCount(item, episodes.length) ? "locked" : ""}">${ep.number}</button>`)
+    .map(
+      (ep, i) =>
+        `<button type="button" data-i="${i}" class="${i >= unlockedCount(item, episodes.length) ? "locked" : ""}">${ep.number}<i class="fa-solid fa-lock" aria-hidden="true"></i></button>`,
+    )
     .join("");
   playerEl.querySelectorAll(".sfv-sheet-grid button").forEach((b) =>
     b.addEventListener("click", () => {
@@ -796,20 +799,21 @@ function openUnlockModal() {
     isolateGestures(unlockEl);
     document.body.appendChild(unlockEl);
   }
-  unlockEl.innerHTML = `
-    <div class="sfv-unlock-box">
-      <div class="sfv-unlock-head"><span>Desbloqueando episodios…</span><button type="button" class="sfv-icon-btn" data-act="cancel" aria-label="Cancelar"><i class="fa-solid fa-xmark"></i></button></div>
-      <iframe src="${SUPPORT_URL}" allow="autoplay; encrypted-media" referrerpolicy="origin"></iframe>
-    </div>`;
+  // Full screen and without a close button: the ad page itself shows "Saltar" when allowed.
+  unlockEl.innerHTML = `<iframe src="${SUPPORT_URL}" allow="autoplay; encrypted-media" referrerpolicy="origin"></iframe>`;
   unlockEl.classList.add("open");
   const iframe = unlockEl.querySelector("iframe");
   let readySeen = false;
   const loadTimer = setTimeout(() => {
     if (!readySeen) finish("error");
   }, 20000);
+  // Nobody gets stuck: if the ad never finishes (frozen video…), unlock anyway.
+  const safetyTimer = setTimeout(() => finish("nofill"), 90000);
 
   async function finish(result) {
+    if (!unlockEl.classList.contains("open")) return;
     clearTimeout(loadTimer);
+    clearTimeout(safetyTimer);
     window.removeEventListener("message", onMsg);
     closeUnlockModal();
     if (result === "error") {
@@ -832,11 +836,6 @@ function openUnlockModal() {
     else if (d.event === "nofill") finish("nofill");
   }
   window.addEventListener("message", onMsg);
-  unlockEl.querySelector('[data-act="cancel"]').addEventListener("click", () => {
-    clearTimeout(loadTimer);
-    window.removeEventListener("message", onMsg);
-    closeUnlockModal();
-  });
 }
 
 function closeUnlockModal() {
