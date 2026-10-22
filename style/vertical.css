@@ -387,6 +387,8 @@ html.sfv-noscroll body {
   padding: 0 16px 4px;
   overflow-x: auto;
   scroll-snap-type: x proximity;
+  /* Without this, snapping aligns cards to the very edge and ignores the 16px padding. */
+  scroll-padding-inline: 16px;
   scrollbar-width: none;
 }
 .sfv-scroller::-webkit-scrollbar {
@@ -1184,50 +1186,34 @@ html.sfv-noscroll body {
   color: #9ca3af;
   opacity: 0.75;
 }
-.sfv-sheet-grid button.locked::after {
-  content: "023";
-  font: 900 0.55rem "Font Awesome 6 Free";
-  margin-left: 3px;
-  vertical-align: top;
+.sfv-sheet-grid button {
+  position: relative;
+}
+.sfv-sheet-grid button i {
+  display: none;
+}
+.sfv-sheet-grid button.locked i {
+  display: block;
+  position: absolute;
+  top: 4px;
+  right: 5px;
+  font-size: 0.55rem;
+  color: #ffb27a;
 }
 #sfv-unlock {
   position: fixed;
   inset: 0;
   z-index: 10005;
   display: none;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-  background: rgba(0, 0, 0, 0.82);
+  background: #000;
 }
 #sfv-unlock.open {
   display: flex;
 }
-.sfv-unlock-box {
-  display: flex;
-  flex-direction: column;
+#sfv-unlock iframe {
+  display: block;
   width: 100%;
-  max-width: 420px;
-  height: min(86vh, 760px);
-  border: 1px solid var(--sfv-line);
-  border-radius: 18px;
-  overflow: hidden;
-  background: #000;
-}
-.sfv-unlock-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 8px 10px 8px 14px;
-  color: #fff;
-  font-size: 0.85rem;
-  font-weight: 700;
-  background: #0b0d12;
-}
-.sfv-unlock-box iframe {
-  flex: 1;
-  width: 100%;
+  height: 100%;
   border: 0;
   background: #000;
 }
