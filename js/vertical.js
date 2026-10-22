@@ -143,10 +143,77 @@ function episodesOf(item) {
   return out;
 }
 
-async function loadItems() {
-  if (items) return items;
+// ── caché del catálogo en el teléfono ──
+// Cada serie leída de Firestore cuenta como una lectura (plan gratis: 50 000/día).
+// La copia del teléfono se usa mientras web_config/vertical_catalog.version no
+// cambie: exploracurioso y el panel de admin la cambian al publicar o editar, así
+// que lo nuevo aparece al instante y cada apertura cuesta 1 lectura, no 1 por serie.
+const CATALOG_KEY = "sf_vertical_catalog_v2";
+const CATALOG_TTL_MS = 15 * 60 * 1000; // sin poder leer la versión: copia válida 15 min
+const CATALOG_MAX_AGE_MS = 24 * 60 * 60 * 1000; // con versión igual: como mucho 1 día
+const MEMORY_FRESH_MS = 60 * 1000; // dentro de la misma sesión, recomprobar cada minuto
+let itemsLoadedAt = 0;
+
+/** Current catalog version, or null if it cannot be read (offline, rules…). */
+async function readCatalogVersion() {
+  try {
+    const snap = await getDoc(doc(db, "web_config", "vertical_catalog"));
+    return snap.exists() ? Number(snap.data().version) || 0 : 0;
+  } catch (err) {
+    console.warn("[vertical] versión del catálogo no disponible", err);
+    return null;
+  }
+}
+
+/** Firestore Timestamps → milliseconds, so the docs survive JSON. */
+function plainDoc(x) {
+  const out = { ...x };
+  for (const k of Object.keys(out)) {
+    const v = out[k];
+    if (v && typeof v.toMillis === "function") out[k] = v.toMillis();
+  }
+  return out;
+}
+function readCatalogCache() {
+  try {
+    const c = JSON.parse(localStorage.getItem(CATALOG_KEY) || "null");
+    if (c && Array.isArray(c.all)) return c;
+  } catch {
+    /* caché dañada o sin almacenamiento */
+  }
+  return null;
+}
+function writeCatalogCache(all, version) {
+  try {
+    localStorage.setItem(CATALOG_KEY, JSON.stringify({ at: Date.now(), version, all }));
+  } catch {
+    /* lleno o sin almacenamiento: se sigue sin caché */
+  }
+}
+function setCatalog(all) {
+  itemsLoadedAt = Date.now();
+  allItems = all;
+  items = allItems.filter((it) => it.is_vertical !== false && !it.hidden && episodesOf(it).length > 0);
+  return items;
+}
+
+/** force = true: skip the phone cache (admin panel, after edits). */
+async function loadItems(force = false) {
+  if (items && !force && Date.now() - itemsLoadedAt < MEMORY_FRESH_MS) return items;
   if (loading) return loading;
+  let version = null;
+  if (!force) {
+    const cached = readCatalogCache();
+    if (cached) {
+      version = await readCatalogVersion();
+      const age = Date.now() - cached.at;
+      const fresh =
+        version === null ? age < CATALOG_TTL_MS : cached.version === version && age < CATALOG_MAX_AGE_MS;
+      if (fresh) return setCatalog(cached.all);
+    }
+  }
   loading = (async () => {
+    if (version === null) version = await readCatalogVersion();
     const [own, tmdb] = await Promise.all([
       getDocs(query(collection(db, COLLECTION), orderBy("updated_at", "desc"), limit(MAX_ITEMS))),
       // If this query fails (rules, network) the catalog still shows the series without TMDB.
@@ -167,12 +234,17 @@ async function loadItems() {
         created_at: x.created_at || x.imported_at,
       };
     });
-    allItems = [...own.docs.map((d) => ({ ...d.data(), id: d.id, _col: COLLECTION, _docId: d.id })), ...fromTmdb];
-    items = allItems.filter((it) => it.is_vertical !== false && !it.hidden && episodesOf(it).length > 0);
-    return items;
+    const all = [...own.docs.map((d) => ({ ...d.data(), id: d.id, _col: COLLECTION, _docId: d.id })), ...fromTmdb].map(plainDoc);
+    writeCatalogCache(all, version);
+    return setCatalog(all);
   })();
   try {
     return await loading;
+  } catch (err) {
+    // No network / Firestore error: an older copy is better than an empty catalog.
+    const stale = readCatalogCache();
+    if (stale) return setCatalog(stale.all);
+    throw err;
   } finally {
     loading = null;
   }
@@ -272,7 +344,15 @@ let catQuery = ""; // search box text
 let heroTimer = null;
 
 const tsOf = (v) =>
-  !v ? 0 : typeof v.toMillis === "function" ? v.toMillis() : typeof v.seconds === "number" ? v.seconds * 1000 : Date.parse(v) || 0;
+  !v
+    ? 0
+    : typeof v === "number"
+      ? v
+      : typeof v.toMillis === "function"
+        ? v.toMillis()
+        : typeof v.seconds === "number"
+          ? v.seconds * 1000
+          : Date.parse(v) || 0;
 const norm = (t) =>
   String(t || "")
     .toLowerCase()
@@ -454,7 +534,7 @@ function renderCatalog(list) {
   renderChips(genres);
 
   const byNew = [...list].sort((a, b) => tsOf(b.created_at || b.updated_at) - tsOf(a.created_at || a.updated_at));
-  const newIds = new Set(byNew.filter((it) => Date.now() - tsOf(it.created_at) < 3 * 864e5).map((it) => it.id));
+  const newIds = new Set(byNew.filter((it) => Date.now() - tsOf(it.created_at) < 14 * 864e5).map((it) => it.id));
 
   // Search or category: filtered grid.
   if (catQuery || catFilter !== "all") {
@@ -1073,13 +1153,12 @@ async function openAdminPanel() {
       popLayer,
       setBackHandler: (fn) => (adminBack = fn),
       getAll: async () => {
-        await loadItems();
+        await loadItems(true); // el admin siempre ve lo que hay en Firestore
         return allItems;
       },
       // Tras guardar o borrar: recargar desde Firestore y repintar el catálogo.
       reload: async () => {
-        items = null;
-        await loadItems();
+        await loadItems(true);
         if (catalogEl?.classList.contains("open")) renderCatalog(items);
         if (items.length) mountFab();
         return allItems;
