@@ -199,7 +199,8 @@ window.addEventListener("popstate", () => {
     selfPops--;
     return;
   }
-  if (adminBack?.(true)) return;
+  // No optional calls (fn?.()) in this file: the obfuscator turns them into plain calls.
+  if (typeof adminBack === "function" && adminBack(true)) return;
   if (closeUnlockModal()) {
     pushLayer("player"); // the modal has no history entry of its own
     return;
@@ -217,7 +218,7 @@ window.addEventListener("popstate", () => {
  */
 function handleBack() {
   if (closeUnlockModal()) return true;
-  if (adminBack?.(false)) return true;
+  if (typeof adminBack === "function" && adminBack(false)) return true;
   if (playerEl?.querySelector(".sfv-sheet.open")) {
     closeSheet();
     return true;
@@ -246,7 +247,8 @@ function isolateGestures(el) {
 }
 
 function lockScroll(on) {
-  document.documentElement.classList.toggle("sfv-lock", on);
+  // Not "sfv-lock": that is the episode lock card class and its styles would hit <html>.
+  document.documentElement.classList.toggle("sfv-noscroll", on);
 }
 
 // ── botón flotante ──────────────────────────────────────────────────────────
