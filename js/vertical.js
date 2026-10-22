@@ -454,7 +454,7 @@ function renderCatalog(list) {
   renderChips(genres);
 
   const byNew = [...list].sort((a, b) => tsOf(b.created_at || b.updated_at) - tsOf(a.created_at || a.updated_at));
-  const newIds = new Set(byNew.filter((it) => Date.now() - tsOf(it.created_at) < 14 * 864e5).map((it) => it.id));
+  const newIds = new Set(byNew.filter((it) => Date.now() - tsOf(it.created_at) < 3 * 864e5).map((it) => it.id));
 
   // Search or category: filtered grid.
   if (catQuery || catFilter !== "all") {
