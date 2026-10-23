@@ -12,6 +12,7 @@
         <div class="brand"><img class="logo" src="https://raw.githubusercontent.com/Javier0618/Imagenes/refs/heads/main/SFusionLogo.png" alt="" onerror="this.style.display='none'"><span>Stream<b>Fusion</b></span></div>
         <div id="tabs"></div>
         <div id="search-btn" class="tab focusable search-tab" data-kind="search" data-key="tab:search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.2"/><path d="M15.2 15.2L20.5 20.5"/></svg>Buscar</div>
+        <div id="account-btn" class="tab focusable account-tab" data-kind="account" data-key="tab:account" title="Iniciar sesión"></div>
       </nav>
 
       <!-- Inicio y secciones: banner principal + filas -->
@@ -63,14 +64,9 @@
           allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
       </section>
 
+      <!-- Cuenta: inicio de sesión con un código que se aprueba desde el celular -->
       <section id="screen-login" class="screen" hidden>
-        <div class="login-box">
-          <h1>Iniciar sesión</h1>
-          <p>Pulsa OK sobre un campo para escribir con el teclado del televisor.</p>
-          <input id="login-email" class="focusable field" type="email" placeholder="Correo" autocomplete="off" />
-          <input id="login-pass" class="focusable field" type="password" placeholder="Contraseña" autocomplete="off" />
-          <button id="login-btn" class="focusable btn" data-kind="login">Entrar</button>
-        </div>
+        <div id="link-box" class="login-box link-box"></div>
       </section>
 
       <div id="confirm" hidden>
