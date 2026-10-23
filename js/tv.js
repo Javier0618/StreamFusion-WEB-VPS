@@ -8,9 +8,11 @@
    ================================================================ */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-app.js";
 import {
-  getFirestore, collection, getDocs, query, orderBy, limit, startAfter, doc, getDoc,
+  getFirestore, collection, getDocs, query, orderBy, limit, startAfter, doc, getDoc, onSnapshot, updateDoc,
 } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-firestore.js";
-import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-auth.js";
+import {
+  getAuth, signInWithCustomToken, onAuthStateChanged, signOut,
+} from "https://www.gstatic.com/firebasejs/11.5.0/firebase-auth.js";
 import { firebaseConfig } from "https://sfusion.netlify.app/js/config.js";
 import * as core from "https://sfusion.netlify.app/js/tv-core.js";
 
@@ -32,6 +34,11 @@ const SF_TV_RESUME_SEEK = true;  // reanudar en el minuto guardado (el cuadro "V
 
 const PROGRESS_KEY = "sf_progress_v1";
 const WATCHED_KEY = "sf_watched_v1";
+const CW_KEY = "sf_continue_watching"; // fila "Continuar viendo" del celular (para que vea lo que se ve aquí)
+const CW_MAX = 20;
+const PAIR_API = "https://exploracurioso.top/api/pair"; // inicio de sesión con código (lo aprueba el celular)
+const PAIR_POLL_MS = 2500;
+const DEVICE_KEY = "sf_tv_device"; // id de este TV en tv_devices (para cerrar sesión desde el celular)
 
 // Abre las conexiones a imágenes y base de datos cuanto antes
 ["https://image.tmdb.org", "https://firestore.googleapis.com"].forEach((h) => {
@@ -90,11 +97,30 @@ function saveProgress(id, data) {
     keys.sort((a, b) => (all[a].ts || 0) - (all[b].ts || 0)).slice(0, keys.length - 100).forEach((k) => delete all[k]);
   }
   writeJson(PROGRESS_KEY, all);
+  cwTouch(id);
+}
+const readCw = () => {
+  try { const v = JSON.parse(localStorage.getItem(CW_KEY) || "[]"); return Array.isArray(v) ? v : []; } catch { return []; }
+};
+// Lleva el título al primer lugar de la fila del celular (solo si no lo está ya)
+function cwTouch(id) {
+  let list = readCw();
+  if (list.length && list[0] && String(list[0].id) === String(id)) return;
+  const item = state.byId.get(String(id));
+  if (!item) return;
+  list = list.filter((i) => i && String(i.id) !== String(id));
+  list.unshift({
+    id: item.id, title: item.title || "Sin título", poster_path: item.poster_path || "",
+    media_type: item.media_type || "movie", vote_average: item.vote_average || 0, timestamp: Date.now(),
+  });
+  try { localStorage.setItem(CW_KEY, JSON.stringify(list.slice(0, CW_MAX))); } catch {}
 }
 function removeProgress(id) {
   const all = readJson(PROGRESS_KEY);
   delete all[String(id)];
   writeJson(PROGRESS_KEY, all);
+  try { localStorage.setItem(CW_KEY, JSON.stringify(readCw().filter((i) => i && String(i.id) !== String(id)))); } catch {}
+  if (typeof window.sfMarkRemoved === "function") window.sfMarkRemoved(id); // también en el celular
 }
 function isWatched(id, s, e) {
   const w = readJson(WATCHED_KEY)[String(id)];
@@ -121,6 +147,7 @@ const state = {
   heroItems: [], heroIdx: 0, heroTimer: null,
   grid: null, detail: null, stack: [],
   play: null, ui: {}, pendingSeek: null,
+  user: null, myList: [], pair: null,
 };
 
 const isPlayable = (item) =>
@@ -325,7 +352,7 @@ function colsOf(els) {
   return Math.max(1, n);
 }
 function navGroup() {
-  return { id: "nav", els: live([...qa("#tabs .focusable"), ...qa("#search-btn")]) };
+  return { id: "nav", els: live([...qa("#tabs .focusable"), ...qa("#search-btn"), ...qa("#account-btn")]) };
 }
 function buildGroups(name) {
   const g = [];
@@ -540,6 +567,8 @@ function currentRows() {
   }
   const rows = [...state.baseRows[key]];
   if (key === "inicio") {
+    const mine = myListRow();
+    if (mine) rows.unshift(mine);
     const cont = core.buildContinueRow(readJson(PROGRESS_KEY), state.byId);
     if (cont) rows.unshift(cont);
   }
@@ -553,6 +582,28 @@ function renderRows() {
     : `<div class="login-box"><h1>Sin contenido</h1><p>Esta sección todavía no tiene títulos con enlace.</p></div>`;
   nav.lastRow = null;
   invalidateNav();
+}
+
+// "Mi lista" de la cuenta (users/{uid}.myList, la misma del celular)
+function myListRow() {
+  const cards = [];
+  const seen = new Set();
+  for (const it of state.myList) {
+    const item = it && it.id != null ? state.byId.get(String(it.id)) : null;
+    if (!item || seen.has(String(item.id))) continue;
+    seen.add(String(item.id));
+    cards.push({ item });
+    if (cards.length >= 30) break;
+  }
+  return cards.length ? { id: "mylist", title: "Mi lista", kind: "poster", cards, all: null } : null;
+}
+// Vuelve a dibujar el Inicio sin perder la tarjeta enfocada (cuando llegan datos de la cuenta)
+function refreshHomeRows() {
+  if (state.screen !== "browse" || state.section !== "inicio" || state.confirm) return;
+  const key = nav.focus && nav.focus.dataset.key;
+  renderRows();
+  const el = key && document.querySelector(`#screen-browse [data-key="${CSS.escape(key)}"]`);
+  if (el) setFocus(el); else restoreFocus("browse");
 }
 
 // ---------------- Menú de secciones ----------------
@@ -1044,7 +1095,8 @@ function activate(el) {
     case "remove-progress": askRemoveContinue(state.detail.item.id, state.detail.item.title); break;
     case "dtab": state.detail.tab = el.dataset.tab; nav.memo.detail = `dtab:${el.dataset.tab}`; renderDetail(); restoreFocus("detail"); break;
     case "episode": startPlayback(state.detail.item, Number(el.dataset.season), Number(el.dataset.episode)); break;
-    case "login": doLogin(); break;
+    case "account": openAccount(); break;
+    case "logout": logout(false); break;
     case "retry": boot(); break;
   }
 }
@@ -1084,6 +1136,11 @@ function goBack() {
       showScreen(prev);
       return true;
     }
+    case "login":
+      if (!state.content.length) return false; // sin catálogo no hay a dónde volver
+      stopPairing();
+      showScreen(state.stack.pop() || "browse");
+      return true;
     case "browse":
       if (state.section !== "inicio") { selectSection("inicio"); return true; }
       // Tizen / webOS: en la pantalla principal, Atrás sale de la app
@@ -1164,20 +1221,179 @@ document.addEventListener("keydown", (e) => {
   else if (action === "back") goBack();
 }, true);
 
-// ---------------- Sesión y arranque ----------------
-async function doLogin() {
-  const email = $("#login-email").value.trim();
-  const pass = $("#login-pass").value;
-  if (!email || !pass) { toast("Escribe tu correo y tu contraseña"); return; }
-  setLoading(true);
-  try {
-    await signInWithEmailAndPassword(auth, email, pass);
-    await boot();
-  } catch {
-    setLoading(false);
-    toast("No se pudo iniciar sesión. Revisa tus datos.");
-  }
+// ---------------- Sesión: código en el TV, aprobado desde el celular ----------------
+// El TV pide un código a exploracurioso.top/pair, lo muestra y espera. En el celular (con sesión):
+// perfil → Vincular TV → escribir el código. El servidor entrega aquí un token de esa cuenta.
+function deviceName() {
+  const ua = navigator.userAgent || "";
+  const m = ua.match(/Android [\d.]+; ([^;)]+?)(?: Build|\))/);
+  if (m && m[1] && !/^(wv|K)$/.test(m[1].trim())) return m[1].trim().slice(0, 40);
+  if (/Tizen/i.test(ua)) return "Samsung TV";
+  if (/Web0S|webOS/i.test(ua)) return "LG TV";
+  if (/Android/i.test(ua)) return "Android TV";
+  return "TV";
 }
+
+function renderAccount() {
+  const box = $("#link-box");
+  if (state.user) {
+    const who = state.user.displayName || state.user.email || "tu cuenta";
+    box.innerHTML = `<h1>Tu cuenta</h1>
+      <p class="link-sub">Conectado como <b>${esc(who)}</b>. Tu lista y lo que estás viendo se comparten con tu celular.</p>
+      <div class="link-btns">
+        <button class="btn primary focusable" data-kind="back" data-key="acc:back" type="button">Volver</button>
+        <button class="btn focusable" data-kind="logout" data-key="acc:logout" type="button">Cerrar sesión</button>
+      </div>`;
+  } else {
+    const p = state.pair;
+    const has = !!(p && p.code);
+    box.innerHTML = `<h1>Inicia sesión con tu celular</h1>
+      <ol class="link-steps">
+        <li>Abre <b>StreamFusion</b> en tu celular e inicia sesión.</li>
+        <li>Toca tu perfil y elige <b>Vincular TV</b>.</li>
+        <li>Escribe este código:</li>
+      </ol>
+      <div class="link-code${has ? "" : " wait"}">${has ? esc(p.code) : "···-····"}</div>
+      <p class="link-sub">${p && p.error ? esc(p.error) : "El código cambia cada 10 minutos. Esta pantalla avanza sola cuando lo apruebes."}</p>
+      ${state.content.length ? '<div class="link-btns"><button class="btn focusable" data-kind="back" data-key="acc:back" type="button">Ahora no</button></div>' : ""}`;
+  }
+  invalidateNav();
+}
+
+function stopPairing() {
+  if (state.pair) clearTimeout(state.pair.timer);
+  state.pair = null;
+}
+async function startPairing() {
+  stopPairing();
+  const p = { code: null, secret: null, timer: null, error: null };
+  state.pair = p;
+  renderAccount();
+  try {
+    const r = await fetch(`${PAIR_API}/start`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ device: deviceName() }),
+    });
+    const data = await r.json();
+    if (!r.ok || !data.code) throw new Error(data.message || "sin código");
+    if (state.pair !== p) return;
+    p.code = data.code;
+    p.secret = data.secret;
+    p.timer = setTimeout(() => pollPairing(p), PAIR_POLL_MS);
+  } catch (err) {
+    if (state.pair !== p) return;
+    console.warn("No se pudo pedir el código", err);
+    p.error = "No se pudo obtener un código. Revisa la conexión; se reintentará solo.";
+    p.timer = setTimeout(() => { if (state.pair === p) startPairing(); }, 10000);
+  }
+  if (state.screen === "login") { renderAccount(); restoreFocus("login"); }
+}
+async function pollPairing(p) {
+  if (state.pair !== p) return;
+  let data = null;
+  try {
+    const r = await fetch(`${PAIR_API}/poll?secret=${encodeURIComponent(p.secret)}`);
+    data = await r.json();
+  } catch { data = null; } // sin red un momento: se vuelve a intentar
+  if (state.pair !== p) return;
+  if (data && data.status === "expired") { startPairing(); return; }
+  if (data && data.status === "approved" && data.token) {
+    stopPairing();
+    setLoading(true);
+    try {
+      try { localStorage.setItem(DEVICE_KEY, data.deviceId || ""); } catch {}
+      await signInWithCustomToken(auth, data.token);
+      toast("¡Listo! Sesión iniciada");
+      if (state.content.length) { state.stack = []; showScreen("browse"); refreshHomeRows(); }
+      else await boot();
+    } catch (err) {
+      console.error(err);
+      toast("No se pudo iniciar sesión. Inténtalo de nuevo.");
+      startPairing();
+    } finally { setLoading(false); }
+    return;
+  }
+  p.timer = setTimeout(() => pollPairing(p), PAIR_POLL_MS);
+}
+
+function openAccount() {
+  if (state.screen !== "login") state.stack.push(state.screen);
+  nav.memo.login = null;
+  if (state.user) { stopPairing(); renderAccount(); } else startPairing();
+  showScreen("login");
+}
+
+// Si el celular cierra la sesión de este TV (tv_devices/{id}.revoked), se cierra aquí también
+let deviceUnsub = null;
+function watchDevice() {
+  if (deviceUnsub) { deviceUnsub(); deviceUnsub = null; }
+  let id = "";
+  try { id = localStorage.getItem(DEVICE_KEY) || ""; } catch {}
+  if (!id || !state.user) return;
+  deviceUnsub = onSnapshot(doc(db, "tv_devices", id), (snap) => {
+    if (!snap.exists() || snap.data().revoked === true) logout(true);
+  }, (err) => console.warn("No se pudo vigilar la sesión del TV", err));
+}
+
+let loggingOut = false;
+async function logout(remote) {
+  if (loggingOut) return;
+  loggingOut = true;
+  if (deviceUnsub) { deviceUnsub(); deviceUnsub = null; }
+  let id = "";
+  try { id = localStorage.getItem(DEVICE_KEY) || ""; localStorage.removeItem(DEVICE_KEY); } catch {}
+  const m = await syncMod;
+  try { if (m) await m.flushSync(); } catch {} // lo visto aquí queda guardado en la cuenta
+  if (!remote && id) { try { await updateDoc(doc(db, "tv_devices", id), { revoked: true }); } catch {} } // sale de la lista del celular
+  try { await signOut(auth); } catch {}
+  if (m) m.clearLocalProgress(); // el TV es compartido: no dejar el historial de la cuenta
+  state.myList = [];
+  loggingOut = false;
+  toast(remote ? "Se cerró la sesión de este TV desde el celular" : "Sesión cerrada");
+  if (state.screen === "login") { state.stack = []; showScreen("browse"); }
+  refreshHomeRows();
+}
+
+function renderAccountButton() {
+  const b = $("#account-btn");
+  if (!b) return;
+  const u = state.user;
+  const initial = u ? String(u.displayName || u.email || "?").trim().charAt(0).toUpperCase() : "";
+  b.innerHTML = u
+    ? `<span class="acc-avatar">${esc(initial)}</span>`
+    : `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>`;
+  b.title = u ? "Tu cuenta" : "Iniciar sesión";
+  b.classList.toggle("signed", !!u);
+  invalidateNav();
+}
+
+// Progreso compartido con la cuenta (sf-sync.js); sin sesión todo queda en este TV
+const syncMod = import("https://sfusion.netlify.app/js/sf-sync.js")
+  .then((m) => { m.startSync(); return m; })
+  .catch((err) => { console.warn("Sincronización no disponible", err); return null; });
+window.addEventListener("sf-sync-updated", refreshHomeRows);
+window.addEventListener("sf-user-doc", (e) => {
+  const data = e.detail;
+  const list = data && Array.isArray(data.myList) ? data.myList.slice() : [];
+  list.sort((a, b) => (Date.parse(b && b.lastVisited) || 0) - (Date.parse(a && a.lastVisited) || 0));
+  const ids = (l) => JSON.stringify(l.map((i) => (i ? String(i.id) : "")));
+  if (ids(list) === ids(state.myList)) return;
+  state.myList = list;
+  refreshHomeRows();
+});
+
+onAuthStateChanged(auth, (user) => {
+  state.user = user || null;
+  if (!user) state.myList = [];
+  renderAccountButton();
+  if (state.screen === "login") {
+    if (user) stopPairing();
+    renderAccount();
+    restoreFocus("login");
+  }
+  watchDevice();
+});
+
+// ---------------- Arranque ----------------
 
 async function boot() {
   setLoading(true);
@@ -1195,7 +1411,7 @@ async function boot() {
   } catch (err) {
     console.error(err);
     if (err && err.code === "permission-denied") {
-      showScreen("login");
+      openAccount();
       toast("Inicia sesión para ver el contenido");
     } else {
       $("#rows").innerHTML = `<div class="login-box"><h1>No se pudo cargar</h1><p>Revisa la conexión a internet e inténtalo de nuevo.</p>
