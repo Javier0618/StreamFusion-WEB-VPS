@@ -1590,6 +1590,19 @@ function updateUIForLoggedInUser() {
       if (settingsCard) settingsCard.style.display = "none";
     }
 
+    // Link a TV (the TV shows a code, the phone approves it)
+    const linkTvItem = document.createElement("div");
+    linkTvItem.className = "profile-dropdown-item";
+    linkTvItem.id = "link-tv-link";
+    linkTvItem.innerHTML = `<i class="fas fa-tv"></i><span>Vincular TV</span>`;
+    linkTvItem.addEventListener("click", () => {
+      profileDropdown.classList.remove("active");
+      import("./sf-link-tv.js")
+        .then((m) => m.openLinkTv())
+        .catch((err) => console.error("No se pudo abrir Vincular TV", err));
+    });
+    profileDropdown.appendChild(linkTvItem);
+
     // Logout link
     const logoutBtnItem = document.createElement("div");
     logoutBtnItem.className = "profile-dropdown-item";
@@ -11433,6 +11446,7 @@ function cwAddItem(item) {
 }
 function cwRemoveItem(itemId) {
   cwSaveHistory(cwGetHistory().filter((i) => String(i.id) !== String(itemId)));
+  if (typeof window.sfMarkRemoved === "function") window.sfMarkRemoved(itemId); // también en el TV y otros dispositivos
   cwRenderSection();
 }
 
@@ -12434,6 +12448,16 @@ function sfWatchModal() {
 if (!sfWatchModal()) {
   document.addEventListener("DOMContentLoaded", sfWatchModal);
 }
+
+// ---------- Progreso en la cuenta: sin sesión queda en el celular; con sesión
+// se comparte con el TV y otros dispositivos (sf-sync.js) ----------
+import("./sf-sync.js")
+  .then((m) => m.startSync())
+  .catch((err) => console.warn("Sincronización no disponible", err));
+window.addEventListener("sf-sync-updated", () => {
+  if (typeof cwRenderSection === "function") cwRenderSection();
+  sfScheduleChecks();
+});
 
 
 // ================================================================
