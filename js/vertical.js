@@ -9,9 +9,9 @@ import {
   collection,
   getDocs,
   query,
-  orderBy,
   limit,
   where,
+  startAfter,
   doc,
   getDoc,
   updateDoc,
@@ -24,7 +24,7 @@ const COLLECTION = "vertical_content";
 // (with is_vertical: true and only "vertical" in their sections).
 const TMDB_COLLECTION = "content";
 const TMDB_IMG = "https://image.tmdb.org/t/p/w500";
-const MAX_ITEMS = 1000; // antes 80: ese tope ocultaba series (se veían solo ~81). Sube el límite de ambas consultas.
+const PAGE_SIZE = 500; // Firestore se consulta por páginas para recuperar todo el catálogo.
 const PROGRESS_KEY = "sf_vertical_progress"; // { [id]: episodeIndex }
 // Open layer, so that if Android reloads the app in the background we come back to the same place.
 // sessionStorage: survives when Android reloads the page in the background, but is cleared
@@ -148,11 +148,29 @@ function episodesOf(item) {
 // La copia del teléfono se usa mientras web_config/vertical_catalog.version no
 // cambie: exploracurioso y el panel de admin la cambian al publicar o editar, así
 // que lo nuevo aparece al instante y cada apertura cuesta 1 lectura, no 1 por serie.
-const CATALOG_KEY = "sf_vertical_catalog_v3"; // v3: invalida la caché vieja (tope 80) para que se recarguen todas las series
-const CATALOG_TTL_MS = 15 * 60 * 1000; // sin poder leer la versión: copia válida 15 min
-const CATALOG_MAX_AGE_MS = 24 * 60 * 60 * 1000; // con versión igual: como mucho 1 día
+const CATALOG_KEY = "sf_vertical_catalog_v4"; // v4: invalida cachés generadas por consultas limitadas.
+const CATALOG_TTL_MS = 15 * 60 * 1000; // se reconstruye la caché cada 15 minutos aunque la versión no cambie
 const MEMORY_FRESH_MS = 60 * 1000; // dentro de la misma sesión, recomprobar cada minuto
 let itemsLoadedAt = 0;
+
+/** Read every document in pages. Without orderBy(updated_at), documents missing
+ * that field are not silently excluded from vertical_content. Firestore's document
+ * ordering is stable for startAfter pagination.
+ */
+async function getAllPages(ref, filters = []) {
+  const docs = [];
+  let cursor = null;
+  while (true) {
+    const constraints = [...filters];
+    if (cursor) constraints.push(startAfter(cursor));
+    constraints.push(limit(PAGE_SIZE));
+    const snap = await getDocs(query(ref, ...constraints));
+    docs.push(...snap.docs);
+    if (snap.docs.length < PAGE_SIZE) break;
+    cursor = snap.docs[snap.docs.length - 1];
+  }
+  return docs;
+}
 
 /** Current catalog version, or null if it cannot be read (offline, rules…). */
 async function readCatalogVersion() {
@@ -207,22 +225,21 @@ async function loadItems(force = false) {
     if (cached) {
       version = await readCatalogVersion();
       const age = Date.now() - cached.at;
-      const fresh =
-        version === null ? age < CATALOG_TTL_MS : cached.version === version && age < CATALOG_MAX_AGE_MS;
+      const fresh = age < CATALOG_TTL_MS && (version === null || cached.version === version);
       if (fresh) return setCatalog(cached.all);
     }
   }
   loading = (async () => {
     if (version === null) version = await readCatalogVersion();
-    const [own, tmdb] = await Promise.all([
-      getDocs(query(collection(db, COLLECTION), orderBy("updated_at", "desc"), limit(MAX_ITEMS))),
+    const [ownDocs, tmdbDocs] = await Promise.all([
+      getAllPages(collection(db, COLLECTION)),
       // If this query fails (rules, network) the catalog still shows the series without TMDB.
-      getDocs(query(collection(db, TMDB_COLLECTION), where("is_vertical", "==", true), limit(MAX_ITEMS))).catch((err) => {
+      getAllPages(collection(db, TMDB_COLLECTION), [where("is_vertical", "==", true)]).catch((err) => {
         console.warn("[vertical] series TMDB no disponibles", err);
         return null;
       }),
     ]);
-    const fromTmdb = (tmdb?.docs ?? []).map((d) => {
+    const fromTmdb = (tmdbDocs ?? []).map((d) => {
       const x = d.data();
       return {
         ...x,
@@ -234,7 +251,7 @@ async function loadItems(force = false) {
         created_at: x.created_at || x.imported_at,
       };
     });
-    const all = [...own.docs.map((d) => ({ ...d.data(), id: d.id, _col: COLLECTION, _docId: d.id })), ...fromTmdb].map(plainDoc);
+    const all = [...ownDocs.map((d) => ({ ...d.data(), id: d.id, _col: COLLECTION, _docId: d.id })), ...fromTmdb].map(plainDoc);
     writeCatalogCache(all, version);
     return setCatalog(all);
   })();
