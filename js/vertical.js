@@ -9,9 +9,9 @@ import {
   collection,
   getDocs,
   query,
-  orderBy,
   limit,
   where,
+  startAfter,
   doc,
   getDoc,
   updateDoc,
@@ -24,7 +24,7 @@ const COLLECTION = "vertical_content";
 // (with is_vertical: true and only "vertical" in their sections).
 const TMDB_COLLECTION = "content";
 const TMDB_IMG = "https://image.tmdb.org/t/p/w500";
-const MAX_ITEMS = 80;
+const PAGE_SIZE = 500; // Firestore se consulta por páginas para recuperar todo el catálogo.
 const PROGRESS_KEY = "sf_vertical_progress"; // { [id]: episodeIndex }
 // Open layer, so that if Android reloads the app in the background we come back to the same place.
 // sessionStorage: survives when Android reloads the page in the background, but is cleared
@@ -148,11 +148,29 @@ function episodesOf(item) {
 // La copia del teléfono se usa mientras web_config/vertical_catalog.version no
 // cambie: exploracurioso y el panel de admin la cambian al publicar o editar, así
 // que lo nuevo aparece al instante y cada apertura cuesta 1 lectura, no 1 por serie.
-const CATALOG_KEY = "sf_vertical_catalog_v2";
-const CATALOG_TTL_MS = 15 * 60 * 1000; // sin poder leer la versión: copia válida 15 min
-const CATALOG_MAX_AGE_MS = 24 * 60 * 60 * 1000; // con versión igual: como mucho 1 día
+const CATALOG_KEY = "sf_vertical_catalog_v4"; // v4: invalida cachés generadas por consultas limitadas.
+const CATALOG_TTL_MS = 15 * 60 * 1000; // se reconstruye la caché cada 15 minutos aunque la versión no cambie
 const MEMORY_FRESH_MS = 60 * 1000; // dentro de la misma sesión, recomprobar cada minuto
 let itemsLoadedAt = 0;
+
+/** Read every document in pages. Without orderBy(updated_at), documents missing
+ * that field are not silently excluded from vertical_content. Firestore's document
+ * ordering is stable for startAfter pagination.
+ */
+async function getAllPages(ref, filters = []) {
+  const docs = [];
+  let cursor = null;
+  while (true) {
+    const constraints = [...filters];
+    if (cursor) constraints.push(startAfter(cursor));
+    constraints.push(limit(PAGE_SIZE));
+    const snap = await getDocs(query(ref, ...constraints));
+    docs.push(...snap.docs);
+    if (snap.docs.length < PAGE_SIZE) break;
+    cursor = snap.docs[snap.docs.length - 1];
+  }
+  return docs;
+}
 
 /** Current catalog version, or null if it cannot be read (offline, rules…). */
 async function readCatalogVersion() {
@@ -207,22 +225,21 @@ async function loadItems(force = false) {
     if (cached) {
       version = await readCatalogVersion();
       const age = Date.now() - cached.at;
-      const fresh =
-        version === null ? age < CATALOG_TTL_MS : cached.version === version && age < CATALOG_MAX_AGE_MS;
+      const fresh = age < CATALOG_TTL_MS && (version === null || cached.version === version);
       if (fresh) return setCatalog(cached.all);
     }
   }
   loading = (async () => {
     if (version === null) version = await readCatalogVersion();
-    const [own, tmdb] = await Promise.all([
-      getDocs(query(collection(db, COLLECTION), orderBy("updated_at", "desc"), limit(MAX_ITEMS))),
+    const [ownDocs, tmdbDocs] = await Promise.all([
+      getAllPages(collection(db, COLLECTION)),
       // If this query fails (rules, network) the catalog still shows the series without TMDB.
-      getDocs(query(collection(db, TMDB_COLLECTION), where("is_vertical", "==", true), limit(MAX_ITEMS))).catch((err) => {
+      getAllPages(collection(db, TMDB_COLLECTION), [where("is_vertical", "==", true)]).catch((err) => {
         console.warn("[vertical] series TMDB no disponibles", err);
         return null;
       }),
     ]);
-    const fromTmdb = (tmdb?.docs ?? []).map((d) => {
+    const fromTmdb = (tmdbDocs ?? []).map((d) => {
       const x = d.data();
       return {
         ...x,
@@ -520,6 +537,49 @@ function renderChips(genres) {
   chips.querySelector(".on")?.scrollIntoView({ inline: "center", block: "nearest" });
 }
 
+// Carga progresiva de las rejillas grandes ("Todas las series", categorías y
+// búsqueda): se pintan por tandas y se añaden más al acercarse al final, para no
+// crear cientos de tarjetas (ni pedir sus imágenes) a la vez.
+const GRID_PAGE = 24;
+let gridObserver = null;
+
+function fillGrid(grid, list, progress, newIds) {
+  gridObserver?.disconnect();
+  gridObserver = null;
+  let shown = 0;
+  const renderMore = () => {
+    const next = list.slice(shown, shown + GRID_PAGE);
+    if (!next.length) return;
+    grid.insertAdjacentHTML(
+      "beforeend",
+      next.map((it) => card(it, progress, { isNew: newIds.has(it.id) })).join(""),
+    );
+    shown += next.length;
+  };
+  renderMore(); // primera tanda, visible al instante
+  if (shown >= list.length) return; // cabía entera: sin observador
+  const sentinel = document.createElement("div");
+  sentinel.className = "sfv-grid-sentinel";
+  sentinel.style.cssText = "width:100%;height:1px;";
+  grid.insertAdjacentElement("afterend", sentinel);
+  gridObserver = new IntersectionObserver(
+    (entries) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        renderMore();
+        if (shown >= list.length && gridObserver) {
+          gridObserver.disconnect();
+          gridObserver = null;
+          sentinel.remove();
+        }
+        break;
+      }
+    },
+    { root: catalogEl?.querySelector(".sfv-cat-body") || null, rootMargin: "800px 0px" },
+  );
+  gridObserver.observe(sentinel);
+}
+
 function renderCatalog(list) {
   const body = catalogEl.querySelector(".sfv-cat-body");
   clearInterval(heroTimer);
@@ -543,8 +603,10 @@ function renderCatalog(list) {
     const res = pool.filter((it) => !q || norm(it.title).includes(q) || genresOf(it).some((g) => norm(g).includes(q)));
     body.innerHTML = res.length
       ? `<div class="sfv-row-head"><h4>${catQuery ? `Resultados para «${esc(catQuery)}»` : esc(catFilter)}</h4><span class="sfv-count">${res.length}</span></div>
-         <div class="sfv-grid">${res.map((it) => card(it, progress, { isNew: newIds.has(it.id) })).join("")}</div>`
+         <div class="sfv-grid sfv-grid-lazy"></div>`
       : `<div class="sfv-empty"><i class="fa-solid fa-magnifying-glass"></i><p>No hay series que coincidan.</p></div>`;
+    const fgrid = body.querySelector(".sfv-grid-lazy");
+    if (fgrid) fillGrid(fgrid, res, progress, newIds);
     return;
   }
 
@@ -575,9 +637,11 @@ function renderCatalog(list) {
     ${genreRows.map(([g, its]) => row(g, its.slice(0, 12), progress, { more: g })).join("")}
     <section class="sfv-row">
       <div class="sfv-row-head"><h4><i class="fa-solid fa-table-cells-large"></i> Todas las series</h4><span class="sfv-count">${list.length}</span></div>
-      <div class="sfv-grid">${byNew.map((it) => card(it, progress, { isNew: newIds.has(it.id) })).join("")}</div>
+      <div class="sfv-grid sfv-grid-lazy"></div>
     </section>`;
   startHeroAutoplay();
+  const allGrid = body.querySelector(".sfv-grid-lazy");
+  if (allGrid) fillGrid(allGrid, byNew, progress, newIds);
 }
 
 async function openCatalog() {
