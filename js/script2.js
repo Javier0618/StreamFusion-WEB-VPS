@@ -4870,7 +4870,7 @@ const SF_CC_DB = "sf_cache";
 const SF_CC_STORE = "kv";
 const SF_CC_KEY = "content_v1";
 const SF_CC_MARGIN_MS = 5 * 60 * 1000; // margen por relojes desfasados (repetir es inofensivo)
-const SF_CC_RESYNC_MS = 3 * 60 * 1000; // al volver a la app, comprobar novedades como mucho cada 3 min
+const SF_CC_RESYNC_MS = 3 * 60 * 1000; // comprobar novedades como mucho cada 3 min (1 lectura si no hay nada nuevo)
 let sfContentSyncedAt = 0;
 
 function sfIdb() {
@@ -4972,8 +4972,10 @@ async function sfLoadContentCached() {
         if (!prev || JSON.stringify(prev) !== JSON.stringify(plain)) changed = true;
         byId.set(id, plain);
       }
-      for (const id of Object.keys(meta?.deleted || {})) {
-        if (byId.delete(String(id))) changed = true;
+      // A title deleted and published again later stays (its updated_at is newer).
+      for (const [id, deletedAt] of Object.entries(meta?.deleted || {})) {
+        const it = byId.get(String(id));
+        if (it && sfTsMillis(it.updated_at) < Number(deletedAt) && byId.delete(String(id))) changed = true;
       }
       const items = changed ? sfSortContent([...byId.values()]) : cached.items;
       if (changed || maxUpdated !== cached.maxUpdated) {
@@ -4989,7 +4991,8 @@ async function sfLoadContentCached() {
   // Primera vez o versión nueva: catálogo completo (una sola vez).
   const items = (await fetchContentFromFirestore()).map(sfPlainContent);
   if (!items.length && cached) return { items: cached.items, changed: false }; // error de lectura
-  const maxUpdated = items.reduce((m, it) => Math.max(m, sfTsMillis(it.updated_at)), Date.now() - SF_CC_MARGIN_MS);
+  // Hora del servidor (updated_at), no la del teléfono: un reloj adelantado haría saltarse títulos nuevos.
+  const maxUpdated = items.reduce((m, it) => Math.max(m, sfTsMillis(it.updated_at)), 0) || Date.now() - SF_CC_MARGIN_MS;
   await sfIdbSet(SF_CC_KEY, { items, version, maxUpdated, at: Date.now() });
   return { items, changed: true };
 }
@@ -5007,16 +5010,26 @@ async function sfRecordContentDeletion(contentId) {
   }
 }
 
-/** Al volver a la app: si hay títulos nuevos, se añaden sin cerrarla. */
-document.addEventListener("visibilitychange", async () => {
-  if (document.hidden || Date.now() - sfContentSyncedAt < SF_CC_RESYNC_MS) return;
+/**
+ * Títulos nuevos sin cerrar la app: al volver a ella (el WebView de Android no siempre
+ * avisa con visibilitychange, por eso también focus/pageshow/online) y cada 3 min mientras se usa.
+ */
+let sfResyncRunning = false;
+async function sfResyncContent() {
+  if (document.hidden || sfResyncRunning || Date.now() - sfContentSyncedAt < SF_CC_RESYNC_MS) return;
+  sfResyncRunning = true;
   try {
     const r = await sfLoadContentCached();
     if (r.changed) await sfApplyContent(r.items);
   } catch (err) {
-    console.warn("[catálogo] no se pudo actualizar al volver", err);
+    console.warn("[catálogo] no se pudo actualizar", err);
+  } finally {
+    sfResyncRunning = false;
   }
-});
+}
+document.addEventListener("visibilitychange", sfResyncContent);
+for (const ev of ["focus", "pageshow", "online"]) window.addEventListener(ev, sfResyncContent);
+setInterval(sfResyncContent, SF_CC_RESYNC_MS);
 
 async function fetchContentFromFirestore(filterOptions = {}) {
   const {
