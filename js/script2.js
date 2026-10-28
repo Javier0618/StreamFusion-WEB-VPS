@@ -5,6 +5,7 @@ import { firebaseConfig, API_KEY, ADMIN_EMAIL } from "./config.js";
 import {
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithCredential,
 } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-auth.js";
 import {
   getAuth,
@@ -1383,7 +1384,24 @@ function handleGoogleSignIn() {
     prompt: "select_account",
   });
 
-  signInWithPopup(auth, provider)
+  // Google bloquea OAuth dentro del WebView (popup/redirect): en la app se usa el
+  // login nativo del plugin @capacitor-firebase/authentication y aquí solo se
+  // canjea su idToken. Sin el plugin (web o APK antiguo) sigue el popup.
+  const cap = window.Capacitor;
+  const nativeAuth =
+    cap && cap.isPluginAvailable && cap.isPluginAvailable("FirebaseAuthentication")
+      ? cap.registerPlugin("FirebaseAuthentication")
+      : null;
+  const signIn = nativeAuth
+    ? nativeAuth.signInWithGoogle({ skipNativeAuth: true }).then((res) =>
+        signInWithCredential(
+          auth,
+          GoogleAuthProvider.credential(res.credential && res.credential.idToken),
+        ),
+      )
+    : signInWithPopup(auth, provider);
+
+  signIn
     .then((result) => {
       showSpinner();
 
