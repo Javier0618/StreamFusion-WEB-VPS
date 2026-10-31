@@ -1,0 +1,22 @@
+name: Apply native UI
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/apply-native-ui.yml"
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Download originals and apply patches
+        run: |
+          set -euo pipefail
+          curl -sL "https://raw.githubusercontent.com/Javier0618/StreamFusion-WEB-VPS/3cd0c43be6e3ce1391f16a20f6af3dd6d443d0bc/style/styles2.css" -o style/styles2.css
+          curl -sL "https://raw.githubusercontent.com/Javier0618/StreamFusion-WEB-VPS/3cd0c43be6e3ce1391f16a20f6af3dd6d443d0bc/js/script2.js" -o js/script2.js
+          echo "$(python3 -c "from pathlib import Path; import base64; print(base64.b64encode(Path('/home/workdir/artifacts/styles2_repo.patch').read_bytes()).decode())")" | base64 -d > /tmp/styles2.patch
+          echo "placeholder" > /tmp/script2.patch
