@@ -1145,6 +1145,46 @@ const isCapacitorApp =
   (window.Capacitor !== undefined ||
     window.location.protocol === "capacitor:" ||
     window.location.protocol === "ionic:");
+
+/** Feedback háptico ligero (solo Capacitor / dispositivos que lo soporten) */
+async function nativeHaptic(style = "Light") {
+  if (!isCapacitorApp) return;
+  try {
+    const { Haptics, ImpactStyle } = await import(
+      "https://cdn.jsdelivr.net/npm/@capacitor/haptics@7.0.0/+esm"
+    );
+    const map = {
+      Light: ImpactStyle.Light,
+      Medium: ImpactStyle.Medium,
+      Heavy: ImpactStyle.Heavy,
+    };
+    await Haptics.impact({ style: map[style] || ImpactStyle.Light });
+  } catch (_) {
+    /* plugin no disponible en web */
+  }
+}
+
+/** StatusBar y área segura para sensación de app nativa */
+async function setupNativeChrome() {
+  if (!isCapacitorApp) return;
+  try {
+    const { StatusBar, Style } = await import(
+      "https://cdn.jsdelivr.net/npm/@capacitor/status-bar@7.0.0/+esm"
+    );
+    await StatusBar.setStyle({ style: Style.Dark });
+    try {
+      await StatusBar.setBackgroundColor({ color: "#070f19" });
+    } catch (_) {
+      /* iOS no siempre permite color de fondo */
+    }
+    try {
+      await StatusBar.setOverlaysWebView({ overlay: true });
+    } catch (_) {}
+  } catch (e) {
+    console.log("StatusBar no disponible:", e?.message || e);
+  }
+}
+
 let currentCategory = "inicio";
 let currentService = null;
 let currentGenre = null;
@@ -1257,6 +1297,9 @@ async function loadSplashConfig() {
 
 // Main initialization function
 async function initApp() {
+  // Chrome nativo (StatusBar) lo antes posible en Capacitor
+  setupNativeChrome();
+
   // Start splash config and web loading in PARALLEL
   const splashPromise = loadSplashConfig();
 
@@ -1776,6 +1819,7 @@ function initEventListeners() {
     link.addEventListener("click", function (e) {
       e.preventDefault();
       const section = this.dataset.section;
+      nativeHaptic("Light");
       // SOLO llamar a navigateToView - no manipular clases active
       navigateToView(section);
     });
@@ -6587,6 +6631,7 @@ async function saveToMyList(item, btnElement = null) {
         });
         await updateDoc(userRef, { myList: myList });
         saveSuccess = true;
+        nativeHaptic("Medium");
         if (btnElement) {
           btnElement.innerHTML = `<i class="fas fa-bookmark"></i>`;
           btnElement.classList.add("saved");
